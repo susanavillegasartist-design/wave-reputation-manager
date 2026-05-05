@@ -1,0 +1,61 @@
+{
+  "source": "Mapa local de trabajo inspirado en las políticas de contenido generado por usuarios de Google Maps. Verificar siempre la versión oficial vigente antes de enviar una reclamación.",
+  "categories": [
+    {
+      "id": "experiencia_no_genuina",
+      "name": "Experiencia no genuina",
+      "description": "La reseña parece no estar basada en una experiencia real con el negocio, el lugar o el servicio evaluado.",
+      "examples": ["Nunca he ido, pero me han dicho que es horrible", "Ataques coordinados tras una polémica externa", "Reseña sin detalles de consumo o visita verificable"],
+      "arguments": ["Solicitar que se revise si la contribución refleja una experiencia real", "Aportar registros de reservas, tickets o atención al cliente que descarten la visita", "Indicar incoherencias objetivas entre la reseña y los servicios prestados"]
+    },
+    {
+      "id": "conflicto_intereses",
+      "name": "Conflicto de intereses",
+      "description": "El contenido puede proceder de competidores, exempleados, proveedores, personas vinculadas o perfiles con intereses particulares.",
+      "examples": ["Reseña de un competidor directo", "Comentario de un exempleado despedido", "Valoración de un proveedor en disputa contractual"],
+      "arguments": ["Explicar la relación identificada y por qué compromete la imparcialidad", "Adjuntar pruebas del vínculo profesional o personal", "Solicitar revisión por posible contenido sesgado"]
+    },
+    {
+      "id": "manipulacion_valoracion",
+      "name": "Manipulación de valoración",
+      "description": "La reseña podría formar parte de una campaña coordinada, incentivo, chantaje o uso de múltiples cuentas para alterar la puntuación.",
+      "examples": ["Si no me devuelves el dinero pondré más reseñas", "Varias reseñas similares publicadas el mismo día", "Amenaza para obtener compensación"],
+      "arguments": ["Señalar patrones de publicación anómalos", "Aportar capturas de amenazas o solicitudes de compensación", "Pedir revisión por posible intento de manipular la puntuación"]
+    },
+    {
+      "id": "contenido_ofensivo",
+      "name": "Contenido ofensivo",
+      "description": "Incluye insultos graves, lenguaje de odio, acoso, amenazas o expresiones degradantes no necesarias para describir una experiencia.",
+      "examples": ["Insultos directos al personal", "Amenazas", "Expresiones discriminatorias"],
+      "arguments": ["Destacar las expresiones ofensivas concretas", "Explicar que el lenguaje excede una crítica legítima", "Solicitar retirada o moderación por seguridad y respeto"]
+    },
+    {
+      "id": "suplantacion",
+      "name": "Suplantación",
+      "description": "El usuario aparenta hacerse pasar por otra persona, empleado, cliente real, representante oficial o entidad ajena.",
+      "examples": ["Perfil que usa nombre o marca del negocio", "Persona que afirma representar a una entidad sin autorización", "Identidad no coincidente con registros internos"],
+      "arguments": ["Aportar elementos que demuestren la identidad o representación falsa", "Indicar el riesgo de confusión para usuarios", "Solicitar revisión por posible suplantación"]
+    },
+    {
+      "id": "informacion_falsa_enganosa",
+      "name": "Información falsa o engañosa",
+      "description": "La reseña contiene afirmaciones objetivamente falsas, imposibles, descontextualizadas o que inducen a error sobre el negocio.",
+      "examples": ["Dice que el local estaba abierto un día cerrado", "Atribuye servicios que el negocio nunca ofrece", "Afirma una sanción inexistente"],
+      "arguments": ["Contrastar cada afirmación con documentos verificables", "Adjuntar horarios, facturas, comunicaciones o registros", "Diferenciar hechos comprobables de opiniones subjetivas"]
+    },
+    {
+      "id": "datos_personales",
+      "name": "Datos personales",
+      "description": "La reseña revela datos personales, confidenciales o sensibles de trabajadores, clientes o terceros sin consentimiento.",
+      "examples": ["Teléfonos, direcciones o correos privados", "Nombre completo de un empleado con acusaciones", "Información médica, financiera o familiar"],
+      "arguments": ["Identificar los datos publicados sin reproducirlos innecesariamente", "Explicar por qué son privados o sensibles", "Solicitar retirada por exposición de información personal"]
+    },
+    {
+      "id": "contenido_irrelevante",
+      "name": "Contenido irrelevante",
+      "description": "El contenido no describe una experiencia con el negocio y se centra en comentarios políticos, sociales, personales, spam o asuntos ajenos.",
+      "examples": ["Discurso político sin relación con el servicio", "Publicidad de otro negocio", "Quejas sobre una noticia externa"],
+      "arguments": ["Explicar la falta de relación con una experiencia de cliente", "Señalar partes ajenas al negocio", "Pedir moderación por contenido fuera de tema"]
+    }
+  ]
+}

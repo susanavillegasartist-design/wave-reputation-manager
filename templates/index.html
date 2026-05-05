@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wave Reputation Manager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', path='styles.css') }}">
+</head>
+<body>
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+
+  <main class="page-shell">
+    <section class="hero card">
+      <div class="brand-mark">W</div>
+      <div>
+        <p class="eyebrow">Google Reviews Policy Assistant</p>
+        <h1>Wave Reputation Manager</h1>
+        <p class="hero-copy">Analiza reseñas negativas, identifica indicios de infracción y genera una reclamación profesional lista para revisar y enviar.</p>
+      </div>
+    </section>
+
+    <section class="legal-banner" role="note">
+      <strong>Aviso legal:</strong> la herramienta no garantiza la retirada de reseñas; solo ayuda a preparar reclamaciones basadas en políticas. Verifica siempre las políticas oficiales vigentes antes de enviar la solicitud.
+    </section>
+
+    <div class="workspace">
+      <section class="card form-card">
+        <div class="section-heading">
+          <span class="step">01</span>
+          <div>
+            <h2>Analizar reseña</h2>
+            <p>Introduce la información observable y cualquier contexto verificable.</p>
+          </div>
+        </div>
+
+        <form id="analysis-form" class="analysis-form">
+          <label>
+            Nombre del negocio
+            <input name="business_name" type="text" placeholder="Ej. Clínica Wave Dental" required>
+          </label>
+
+          <label>
+            Texto de la reseña
+            <textarea name="review_text" rows="6" placeholder="Pega aquí la reseña negativa de Google" required></textarea>
+          </label>
+
+          <div class="grid-two">
+            <label>
+              Número de estrellas
+              <select name="stars" required>
+                <option value="1">1 estrella</option>
+                <option value="2">2 estrellas</option>
+                <option value="3">3 estrellas</option>
+                <option value="4">4 estrellas</option>
+                <option value="5">5 estrellas</option>
+              </select>
+            </label>
+
+            <label>
+              Fecha
+              <input name="review_date" type="date" required>
+            </label>
+          </div>
+
+          <label>
+            Nombre visible del usuario
+            <input name="reviewer_name" type="text" placeholder="Ej. Laura M." required>
+          </label>
+
+          <label>
+            Contexto adicional
+            <textarea name="additional_context" rows="4" placeholder="Ej. No consta reserva, posible exempleado, capturas de amenaza, etc."></textarea>
+          </label>
+
+          <button id="analyze-button" class="primary-button" type="submit">
+            <span class="button-text">Analizar reseña</span>
+            <span class="button-loader" aria-hidden="true"></span>
+          </button>
+
+          <div id="progress" class="progress" aria-live="polite" hidden>
+            <div class="progress-step is-active">Analizando reseña…</div>
+            <div class="progress-step">Consultando políticas…</div>
+            <div class="progress-step">Generando reclamación…</div>
+          </div>
+        </form>
+      </section>
+
+      <section class="card result-card" id="result-card" hidden>
+        <div class="section-heading">
+          <span class="step">02</span>
+          <div>
+            <h2>Resultado</h2>
+            <p>Revisa la viabilidad, los motivos y la reclamación generada.</p>
+          </div>
+        </div>
+
+        <div class="viability" id="viability-pill"></div>
+
+        <div class="result-block">
+          <h3>Motivos detectados</h3>
+          <ul id="motives-list"></ul>
+        </div>
+
+        <div class="result-block">
+          <h3>Política aplicable</h3>
+          <div id="policies-list" class="policy-list"></div>
+        </div>
+
+        <div class="result-block">
+          <h3>Evidencias recomendadas</h3>
+          <ul id="evidence-list"></ul>
+        </div>
+
+        <div class="result-block">
+          <h3>Texto de reclamación adaptado</h3>
+          <textarea id="claim-text" class="claim-text" readonly></textarea>
+          <div class="actions">
+            <button id="copy-button" class="secondary-button" type="button">Copiar reclamación</button>
+            <a id="pdf-link" class="secondary-button" href="#">Exportar informe en PDF</a>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <section class="card history-card">
+      <div class="section-heading">
+        <span class="step">03</span>
+        <div>
+          <h2>Historial de reclamaciones</h2>
+          <p>Últimos análisis guardados en SQLite.</p>
+        </div>
+      </div>
+      <div class="history-table-wrap">
+        <table class="history-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Negocio</th>
+              <th>Usuario</th>
+              <th>Estrellas</th>
+              <th>Viabilidad</th>
+              <th>PDF</th>
+            </tr>
+          </thead>
+          <tbody id="history-body">
+            {% for item in history %}
+            <tr>
+              <td>#{{ item.id }}</td>
+              <td>{{ item.business_name }}</td>
+              <td>{{ item.reviewer_name }}</td>
+              <td>{{ item.stars }}</td>
+              <td><span class="mini-pill {{ item.viability }}">{{ item.viability }}</span></td>
+              <td><a href="/claims/{{ item.id }}/pdf">PDF</a></td>
+            </tr>
+            {% else %}
+            <tr class="empty-row"><td colspan="6">Todavía no hay reclamaciones guardadas.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="{{ url_for('static', path='app.js') }}"></script>
+</body>
+</html>
