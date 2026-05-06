@@ -9,9 +9,11 @@ import logging
 import os
 import re
 import secrets
+import smtplib
 import sqlite3
 from contextlib import closing
 from dataclasses import dataclass
+from email.message import EmailMessage
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -43,6 +45,51 @@ STRIPE_PRICE_TO_PLAN = {
 }
 STRIPE_PRICE_TO_PLAN = {price_id: plan for price_id, plan in STRIPE_PRICE_TO_PLAN.items() if price_id}
 APP_BASE_URL = os.environ.get("APP_BASE_URL", "http://localhost:8000").rstrip("/")
+SMTP_FROM_EMAIL = os.environ.get("SMTP_FROM_EMAIL", "soporte@wavemusicbusiness.com")
+SMTP_FROM_NAME = os.environ.get("SMTP_FROM_NAME", "Wave Music Business")
+WELCOME_EMAIL_RECIPIENT_PLANS = {"basic", "pro"}
+WELCOME_EMAIL_SUBJECTS = {
+    "basic": "Bienvenida a Wave Reputation Manager — Plan Basic activado",
+    "pro": "Bienvenida a Wave Reputation Manager — Plan Pro activado",
+}
+WELCOME_EMAIL_BODIES = {
+    "basic": """Hola,
+
+Gracias por suscribirte a Wave Reputation Manager.
+
+Tu Plan Basic mensual de 9,99 €/mes ya está activo.
+
+Desde tu panel podrás analizar reseñas negativas, detectar posibles incumplimientos de políticas y generar reclamaciones profesionales adaptadas a tu caso.
+
+Accede aquí:
+https://reputation.wavemusicbusiness.com
+
+Si necesitas ayuda, puedes escribirnos a:
+soporte@wavemusicbusiness.com
+
+Gracias por confiar en Wave Music Business.
+
+Un saludo,
+Equipo de Wave Music Business""",
+    "pro": """Hola,
+
+Gracias por suscribirte a Wave Reputation Manager.
+
+Tu Plan Pro mensual de 24,99 €/mes ya está activo.
+
+Desde tu panel podrás analizar reseñas negativas, detectar posibles incumplimientos de políticas y generar reclamaciones profesionales adaptadas a tu caso, con acceso ilimitado según las condiciones del plan.
+
+Accede aquí:
+https://reputation.wavemusicbusiness.com
+
+Si necesitas ayuda, puedes escribirnos a:
+soporte@wavemusicbusiness.com
+
+Gracias por confiar en Wave Music Business.
+
+Un saludo,
+Equipo de Wave Music Business""",
+}
 stripe.api_key = os.environ.get("STRIPE_SECRET_KEY")
 logger = logging.getLogger("wave.billing")
 
@@ -217,6 +264,20 @@ def init_db() -> None:
                 additional_context TEXT NOT NULL,
                 viability TEXT NOT NULL,
                 result_json TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS welcome_email_notifications (
+                stripe_subscription_id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                plan TEXT NOT NULL,
+                status TEXT NOT NULL,
+                reserved_at TEXT NOT NULL,
+                sent_at TEXT,
+                updated_at TEXT NOT NULL,
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )
             """
@@ -574,6 +635,88 @@ def update_user_subscription(
         connection.commit()
 
 
+def smtp_is_configured() -> bool:
+    required_values = (
+        os.environ.get("SMTP_HOST"),
+        os.environ.get("SMTP_PORT"),
+        os.environ.get("SMTP_USER"),
+        os.environ.get("SMTP_PASSWORD"),
+        SMTP_FROM_EMAIL,
+    )
+    return all(bool(value) for value in required_values)
+
+
+def reserve_welcome_email_notification(subscription_id: str, user_id: int, plan: str) -> bool:
+    init_db()
+    now = utc_now()
+    with closing(sqlite3.connect(DB_PATH)) as connection:
+        cursor = connection.execute(
+            """
+            INSERT OR IGNORE INTO welcome_email_notifications (
+                stripe_subscription_id, user_id, plan, status, reserved_at, updated_at
+            ) VALUES (?, ?, ?, 'sending', ?, ?)
+            """,
+            (subscription_id, user_id, plan, now, now),
+        )
+        connection.commit()
+        return cursor.rowcount == 1
+
+
+def mark_welcome_email_notification(subscription_id: str, status: str, sent_at: str | None = None) -> None:
+    init_db()
+    with closing(sqlite3.connect(DB_PATH)) as connection:
+        connection.execute(
+            """
+            UPDATE welcome_email_notifications
+            SET status = ?, sent_at = ?, updated_at = ?
+            WHERE stripe_subscription_id = ?
+            """,
+            (status, sent_at, utc_now(), subscription_id),
+        )
+        connection.commit()
+
+
+def send_welcome_email(recipient_email: str, plan: str) -> None:
+    message = EmailMessage()
+    message["Subject"] = WELCOME_EMAIL_SUBJECTS[plan]
+    message["From"] = f"{SMTP_FROM_NAME} <{SMTP_FROM_EMAIL}>"
+    message["To"] = recipient_email
+    message.set_content(WELCOME_EMAIL_BODIES[plan])
+
+    smtp_host = os.environ["SMTP_HOST"]
+    smtp_port = int(os.environ["SMTP_PORT"])
+    smtp_user = os.environ["SMTP_USER"]
+    smtp_password = os.environ["SMTP_PASSWORD"]
+
+    use_ssl = smtp_port == 465
+    smtp_class = smtplib.SMTP_SSL if use_ssl else smtplib.SMTP
+    with smtp_class(smtp_host, smtp_port, timeout=20) as smtp:
+        if not use_ssl:
+            smtp.starttls()
+        smtp.login(smtp_user, smtp_password)
+        smtp.send_message(message)
+
+
+def send_subscription_welcome_email_once(user: dict[str, Any], plan: str, subscription_id: str | None, subscription_status: str | None) -> None:
+    if plan not in WELCOME_EMAIL_RECIPIENT_PLANS or subscription_status != "active" or not subscription_id:
+        return
+    if not smtp_is_configured():
+        logger.warning("Email de bienvenida no enviado porque SMTP no está configurado")
+        return
+    if not reserve_welcome_email_notification(subscription_id, int(user["id"]), plan):
+        logger.info("Email de bienvenida omitido para suscripción ya notificada")
+        return
+    try:
+        send_welcome_email(user["email"], plan)
+    except Exception as exc:
+        mark_welcome_email_notification(subscription_id, "error")
+        logger.warning("Error enviando email de bienvenida para user_id=%s subscription_id=%s: %s", user["id"], subscription_id, exc.__class__.__name__)
+        return
+    sent_at = utc_now()
+    mark_welcome_email_notification(subscription_id, "sent", sent_at)
+    logger.info("Email de bienvenida enviado correctamente para user_id=%s subscription_id=%s", user["id"], subscription_id)
+
+
 def fetch_user_by_subscription(subscription_id: str | None) -> dict[str, Any] | None:
     if not subscription_id:
         return None
@@ -779,6 +922,7 @@ async def stripe_webhook(request: Request) -> JSONResponse:
                 stripe_subscription_id=subscription_id,
                 current_period_end=current_period_end,
             )
+            send_subscription_welcome_email_once(user, plan, subscription_id, status)
             logger.info("Stripe checkout completed for user_id=%s plan=%s", user["id"], plan)
         else:
             logger.warning("Stripe checkout completed without matching local user")
@@ -792,14 +936,17 @@ async def stripe_webhook(request: Request) -> JSONResponse:
             user = fetch_user_by_email(metadata["email"])
         if user:
             price_id = subscription_price_id(obj)
+            plan = plan_from_price_id(price_id)
+            status = obj.get("status")
             update_user_subscription(
                 int(user["id"]),
-                plan=plan_from_price_id(price_id),
-                subscription_status=obj.get("status"),
+                plan=plan,
+                subscription_status=status,
                 stripe_customer_id=obj.get("customer"),
                 stripe_subscription_id=subscription_id,
                 current_period_end=period_end_to_iso(obj),
             )
+            send_subscription_welcome_email_once(user, plan, subscription_id, status)
             logger.info("Stripe subscription synced for user_id=%s status=%s", user["id"], obj.get("status"))
     elif event_type == "customer.subscription.deleted":
         user = fetch_user_by_subscription(obj.get("id"))
