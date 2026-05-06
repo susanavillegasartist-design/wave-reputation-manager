@@ -5,6 +5,7 @@ import hmac
 import html
 import io
 import json
+import logging
 import os
 import re
 import secrets
@@ -15,6 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
 from fastapi import Cookie, Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -24,14 +26,25 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+import stripe
 
 BASE_DIR = Path(__file__).parent
+load_dotenv(BASE_DIR / ".env")
 POLICIES_PATH = BASE_DIR / "google_policies.json"
 DB_PATH = BASE_DIR / "claims.db"
 SESSION_COOKIE = "wave_session"
 PASSWORD_ITERATIONS = 260_000
 SESSION_SECRET = os.environ.get("WAVE_SESSION_SECRET", "wave-dev-session-secret-change-me")
 PLAN_NAMES = {"free": "Free", "basic": "Basic", "pro": "Pro"}
+PLAN_LIMITS = {"free": 1, "basic": 10, "pro": None}
+STRIPE_PRICE_TO_PLAN = {
+    os.environ.get("STRIPE_PRICE_ID_BASIC", ""): "basic",
+    os.environ.get("STRIPE_PRICE_ID_PRO", ""): "pro",
+}
+STRIPE_PRICE_TO_PLAN = {price_id: plan for price_id, plan in STRIPE_PRICE_TO_PLAN.items() if price_id}
+APP_BASE_URL = os.environ.get("APP_BASE_URL", "http://localhost:8000").rstrip("/")
+stripe.api_key = os.environ.get("STRIPE_SECRET_KEY")
+logger = logging.getLogger("wave.billing")
 
 app = FastAPI(title="Wave Reputation Manager", version="1.1.0")
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
@@ -97,32 +110,46 @@ RULES = (
     ),
 )
 
+LEGAL_OWNER = {
+    "name": "Wave Music Business",
+    "tax_id": "77590331S",
+    "address": "Calle Arjona, Local Bajo, 41001 Sevilla",
+    "email": "soporte@wavemusicbusiness.com",
+    "web": "www.wavemusicbusiness.com",
+}
+LEGAL_CONTACT_HTML = (
+    'Wave Music Business, NIF/CIF 77590331S, domicilio en Calle Arjona, Local Bajo, 41001 Sevilla, '
+    'email <a href="mailto:soporte@wavemusicbusiness.com">soporte@wavemusicbusiness.com</a> y web '
+    '<a href="https://www.wavemusicbusiness.com" target="_blank" rel="noopener noreferrer">www.wavemusicbusiness.com</a>.'
+)
+
 LEGAL_PAGES = {
     "aviso-legal": {
         "title": "Aviso legal",
-        "intro": "Información básica de identificación y condiciones de uso del sitio Wave Reputation Manager.",
+        "intro": "Información de identificación y condiciones de uso del sitio Wave Reputation Manager.",
         "sections": [
-            ("Titularidad", "Este sitio y el servicio digital Wave Reputation Manager son gestionados por [NOMBRE LEGAL DE LA TITULAR], con NIF/CIF [DATO FISCAL PENDIENTE], domicilio en [DOMICILIO FISCAL PENDIENTE] y contacto soporte@wavemusicbusiness.com."),
+            ("Titularidad", f"Este sitio y el servicio digital Wave Reputation Manager son gestionados por {LEGAL_CONTACT_HTML}"),
             ("Objeto", "La web ofrece una herramienta de apoyo para analizar textos de reseñas y preparar borradores de reclamación orientativos basados en posibles infracciones de políticas de plataformas."),
             ("Responsabilidad", "Los contenidos generados son orientativos y deben ser revisados por el usuario antes de su uso. La titular no garantiza resultados concretos ni la eliminación de reseñas."),
         ],
     },
     "privacidad": {
         "title": "Política de privacidad",
-        "intro": "Texto base sobre el tratamiento de datos en un servicio digital de análisis de reseñas.",
+        "intro": "Información sobre el tratamiento de datos en un servicio digital de análisis de reseñas.",
         "sections": [
-            ("Responsable", "Responsable del tratamiento: [NOMBRE LEGAL DE LA TITULAR], NIF/CIF [DATO FISCAL PENDIENTE], contacto soporte@wavemusicbusiness.com."),
-            ("Datos tratados", "Podemos tratar datos como email, datos necesarios para gestionar la cuenta, plan contratado, datos del negocio, texto de reseñas, contexto aportado, historial de reclamaciones y datos técnicos necesarios para prestar el servicio."),
-            ("Finalidades", "Gestionar el registro e inicio de sesión, prestar el análisis de reseñas, conservar el historial asociado a la cuenta, generar informes PDF, atender soporte y preparar futuras funcionalidades de pago."),
-            ("Conservación y derechos", "Los datos se conservarán mientras exista la cuenta o sean necesarios para obligaciones legales. El usuario podrá solicitar acceso, rectificación, supresión, oposición, limitación o portabilidad escribiendo a soporte@wavemusicbusiness.com."),
+            ("Responsable", f"Responsable del tratamiento: {LEGAL_CONTACT_HTML}"),
+            ("Datos tratados", "Podemos tratar datos como email, datos necesarios para gestionar la cuenta, plan contratado, datos del negocio, texto de reseñas, contexto aportado, historial de reclamaciones, identificadores de cliente o suscripción de Stripe y datos técnicos necesarios para prestar el servicio."),
+            ("Finalidades", "Gestionar el registro e inicio de sesión, prestar el análisis de reseñas, conservar el historial asociado a la cuenta, generar informes PDF, atender soporte y gestionar suscripciones de pago mediante Stripe."),
+            ("Conservación y derechos", 'Los datos se conservarán mientras exista la cuenta o sean necesarios para obligaciones legales. El usuario podrá solicitar acceso, rectificación, supresión, oposición, limitación o portabilidad escribiendo a <a href="mailto:soporte@wavemusicbusiness.com">soporte@wavemusicbusiness.com</a>.'),
         ],
     },
     "cookies": {
         "title": "Política de cookies",
-        "intro": "Información base sobre cookies técnicas y futuras cookies analíticas o de pago.",
+        "intro": "Información sobre cookies técnicas y cookies necesarias para operar la aplicación.",
         "sections": [
+            ("Titular", f"Esta política corresponde a {LEGAL_CONTACT_HTML}"),
             ("Cookies técnicas", "La aplicación puede usar cookies técnicas imprescindibles para mantener la sesión de usuario y proteger el acceso a funcionalidades privadas."),
-            ("Cookies futuras", "En el futuro podrían incorporarse cookies analíticas, de medición, soporte o pago. Si se activan, se actualizará esta política y, cuando proceda, se solicitará el consentimiento correspondiente."),
+            ("Cookies de pago", "Stripe puede utilizar tecnologías necesarias para procesar pagos y prevenir fraude cuando el usuario inicia una suscripción desde los botones de checkout."),
             ("Gestión", "Puedes configurar o bloquear cookies desde tu navegador, aunque las cookies técnicas pueden ser necesarias para iniciar sesión y usar el servicio."),
         ],
     },
@@ -130,19 +157,20 @@ LEGAL_PAGES = {
         "title": "Términos y condiciones",
         "intro": "Condiciones básicas de uso de Wave Reputation Manager.",
         "sections": [
+            ("Titular", f"El servicio es prestado por {LEGAL_CONTACT_HTML}"),
             ("Naturaleza del servicio", "La herramienta ayuda a preparar reclamaciones basadas en posibles infracciones de políticas, pero no garantiza la eliminación de reseñas ni sustituye asesoramiento legal especializado."),
             ("Revisión por el usuario", "El usuario es responsable de revisar, completar y validar el texto antes de enviarlo a Google o a cualquier plataforma."),
             ("Uso permitido", "No se debe usar el servicio para reclamaciones falsas, abusivas, engañosas, automatizadas de forma indebida o destinadas a silenciar críticas legítimas."),
-            ("Planes", "Los planes Free, Basic y Pro describen límites y prestaciones previstos. Los pagos de Basic y Pro se activarán próximamente mediante una integración de pago aún no implementada."),
+            ("Planes", "Los planes disponibles son Free (1 análisis gratuito), Basic (10 análisis al mes por 9,99 €/mes) y Pro (análisis ilimitados por 24,99 €/mes). Las suscripciones de pago se procesan mediante Stripe."),
         ],
     },
     "reembolsos": {
         "title": "Política de reembolsos",
-        "intro": "Texto base para futuras suscripciones digitales.",
+        "intro": "Condiciones orientativas de facturación, cancelación e incidencias de suscripciones digitales.",
         "sections": [
-            ("Estado actual", "Actualmente los pagos no están implementados. Los botones de Basic y Pro son placeholders y no generan cargos."),
-            ("Futuras compras", "Cuando existan pagos, se indicarán condiciones de facturación, cancelación y reembolso antes de contratar. [COMPLETAR CON CONDICIONES COMERCIALES Y LEGALES DEFINITIVAS]."),
-            ("Soporte", "Para cualquier incidencia relacionada con planes o facturación futura, contacta con soporte@wavemusicbusiness.com."),
+            ("Titular y soporte", f"Para incidencias de facturación o suscripción, contacta con {LEGAL_CONTACT_HTML}"),
+            ("Suscripciones", "Basic y Pro son suscripciones mensuales gestionadas mediante Stripe. La contratación muestra el precio antes de confirmar el pago."),
+            ("Cancelaciones y reembolsos", "El usuario puede solicitar revisión de incidencias de cobro escribiendo al email de soporte. Los reembolsos se evaluarán caso por caso según el estado del servicio prestado, la normativa aplicable y los registros de uso."),
         ],
     },
 }
@@ -166,6 +194,11 @@ def init_db() -> None:
                 email TEXT NOT NULL UNIQUE,
                 password_hash TEXT NOT NULL,
                 plan TEXT NOT NULL DEFAULT 'free',
+                stripe_customer_id TEXT,
+                stripe_subscription_id TEXT,
+                subscription_status TEXT NOT NULL DEFAULT 'free',
+                current_period_end TEXT,
+                updated_at TEXT,
                 created_at TEXT NOT NULL
             )
             """
@@ -188,9 +221,20 @@ def init_db() -> None:
             )
             """
         )
-        columns = {row[1] for row in connection.execute("PRAGMA table_info(claims)").fetchall()}
-        if "user_id" not in columns:
+        claim_columns = {row[1] for row in connection.execute("PRAGMA table_info(claims)").fetchall()}
+        if "user_id" not in claim_columns:
             connection.execute("ALTER TABLE claims ADD COLUMN user_id INTEGER REFERENCES users(id)")
+        user_columns = {row[1] for row in connection.execute("PRAGMA table_info(users)").fetchall()}
+        user_migrations = {
+            "stripe_customer_id": "TEXT",
+            "stripe_subscription_id": "TEXT",
+            "subscription_status": "TEXT NOT NULL DEFAULT 'free'",
+            "current_period_end": "TEXT",
+            "updated_at": "TEXT",
+        }
+        for column, definition in user_migrations.items():
+            if column not in user_columns:
+                connection.execute(f"ALTER TABLE users ADD COLUMN {column} {definition}")
         connection.commit()
 
 
@@ -248,11 +292,19 @@ def fetch_user(user_id: int | None) -> dict[str, Any] | None:
     init_db()
     with closing(sqlite3.connect(DB_PATH)) as connection:
         connection.row_factory = sqlite3.Row
-        row = connection.execute("SELECT id, email, plan, created_at FROM users WHERE id = ?", (user_id,)).fetchone()
+        row = connection.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
     if not row:
         return None
-    user = dict(row)
-    user["plan_label"] = PLAN_NAMES.get(user["plan"], user["plan"].title())
+    return enrich_user(dict(row))
+
+
+def enrich_user(user: dict[str, Any]) -> dict[str, Any]:
+    plan = user.get("plan") or "free"
+    user["plan"] = plan
+    user["plan_label"] = PLAN_NAMES.get(plan, plan.title())
+    user["analyses_used_month"] = count_monthly_analyses(int(user["id"]))
+    user["analysis_limit"] = PLAN_LIMITS.get(plan, 1)
+    user["analysis_limit_label"] = "Ilimitados" if user["analysis_limit"] is None else str(user["analysis_limit"])
     return user
 
 
@@ -437,6 +489,109 @@ def fetch_history(user_id: int, limit: int = 20) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def current_month_range() -> tuple[str, str]:
+    now = datetime.now(timezone.utc)
+    start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if start.month == 12:
+        end = start.replace(year=start.year + 1, month=1)
+    else:
+        end = start.replace(month=start.month + 1)
+    return start.isoformat(timespec="seconds"), end.isoformat(timespec="seconds")
+
+
+def count_monthly_analyses(user_id: int) -> int:
+    init_db()
+    start, end = current_month_range()
+    with closing(sqlite3.connect(DB_PATH)) as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM claims WHERE user_id = ? AND created_at >= ? AND created_at < ?",
+            (user_id, start, end),
+        ).fetchone()[0]
+    return int(count)
+
+
+def can_analyze(user: dict[str, Any]) -> tuple[bool, str | None]:
+    plan = user.get("plan") or "free"
+    limit = PLAN_LIMITS.get(plan, 1)
+    if limit is None:
+        return True, None
+    used = count_monthly_analyses(int(user["id"]))
+    if used < limit:
+        return True, None
+    if plan == "basic":
+        return False, "Has alcanzado el límite mensual de tu plan Basic. Actualiza a Pro para análisis ilimitados."
+    return False, "Has alcanzado el límite de tu plan Free. Actualiza a Basic o Pro para continuar."
+
+
+def plan_from_price_id(price_id: str | None) -> str:
+    if price_id and price_id in STRIPE_PRICE_TO_PLAN:
+        return STRIPE_PRICE_TO_PLAN[price_id]
+    return "free"
+
+
+def subscription_price_id(subscription: Any) -> str | None:
+    items = subscription.get("items", {}).get("data", []) if hasattr(subscription, "get") else []
+    if not items:
+        return None
+    price = items[0].get("price", {})
+    return price.get("id")
+
+
+def period_end_to_iso(subscription: Any) -> str | None:
+    period_end = subscription.get("current_period_end") if hasattr(subscription, "get") else None
+    if not period_end:
+        return None
+    return datetime.fromtimestamp(int(period_end), tz=timezone.utc).isoformat(timespec="seconds")
+
+
+def update_user_subscription(
+    user_id: int,
+    *,
+    plan: str | None = None,
+    subscription_status: str | None = None,
+    stripe_customer_id: str | None = None,
+    stripe_subscription_id: str | None = None,
+    current_period_end: str | None = None,
+) -> None:
+    fields: dict[str, Any] = {"updated_at": utc_now()}
+    if plan is not None:
+        fields["plan"] = plan
+    if subscription_status is not None:
+        fields["subscription_status"] = subscription_status
+    if stripe_customer_id is not None:
+        fields["stripe_customer_id"] = stripe_customer_id
+    if stripe_subscription_id is not None:
+        fields["stripe_subscription_id"] = stripe_subscription_id
+    if current_period_end is not None:
+        fields["current_period_end"] = current_period_end
+    assignments = ", ".join(f"{column} = ?" for column in fields)
+    with closing(sqlite3.connect(DB_PATH)) as connection:
+        connection.execute(f"UPDATE users SET {assignments} WHERE id = ?", [*fields.values(), user_id])
+        connection.commit()
+
+
+def fetch_user_by_subscription(subscription_id: str | None) -> dict[str, Any] | None:
+    if not subscription_id:
+        return None
+    init_db()
+    with closing(sqlite3.connect(DB_PATH)) as connection:
+        connection.row_factory = sqlite3.Row
+        row = connection.execute("SELECT * FROM users WHERE stripe_subscription_id = ?", (subscription_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def stripe_checkout_price_id(selected_plan: str) -> str:
+    env_name = "STRIPE_PRICE_ID_BASIC" if selected_plan == "basic" else "STRIPE_PRICE_ID_PRO"
+    price_id = os.environ.get(env_name)
+    if not stripe.api_key or not price_id:
+        raise HTTPException(status_code=503, detail="La configuración de Stripe no está completa.")
+    return price_id
+
+
 def pdf_text(value: Any) -> str:
     return html.escape(str(value)).replace("\n", "<br/>")
 
@@ -514,6 +669,157 @@ def pricing_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse("pricing.html", template_context(request))
 
 
+@app.post("/billing/create-checkout-session/{selected_plan}")
+def create_checkout_session(selected_plan: str, request: Request, session: str | None = Cookie(default=None, alias=SESSION_COOKIE)) -> RedirectResponse:
+    user = current_user(session)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    if selected_plan not in {"basic", "pro"}:
+        raise HTTPException(status_code=404, detail="Plan no encontrado.")
+    price_id = stripe_checkout_price_id(selected_plan)
+    try:
+        session = stripe.checkout.Session.create(
+            mode="subscription",
+            customer=user.get("stripe_customer_id") or None,
+            customer_email=None if user.get("stripe_customer_id") else user["email"],
+            line_items=[{"price": price_id, "quantity": 1}],
+            success_url=f'{APP_BASE_URL}/billing/success?session_id={{CHECKOUT_SESSION_ID}}',
+            cancel_url=f"{APP_BASE_URL}/pricing",
+            metadata={"user_id": str(user["id"]), "email": user["email"], "selected_plan": selected_plan},
+            subscription_data={"metadata": {"user_id": str(user["id"]), "email": user["email"], "selected_plan": selected_plan}},
+        )
+    except stripe.error.StripeError as exc:
+        logger.warning("Stripe checkout error for user_id=%s plan=%s: %s", user["id"], selected_plan, exc.user_message or exc.__class__.__name__)
+        raise HTTPException(status_code=502, detail="No se pudo iniciar Stripe Checkout. Inténtalo de nuevo.") from exc
+    return RedirectResponse(url=session.url, status_code=303)
+
+
+@app.get("/billing/success", response_class=HTMLResponse)
+def billing_success(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        "billing_status.html",
+        template_context(
+            request,
+            title="Suscripción activada",
+            message="Suscripción activada correctamente. Tu plan se actualizará en unos segundos.",
+            button_href="/",
+            button_text="Volver al dashboard",
+        ),
+    )
+
+
+@app.get("/billing/cancel", response_class=HTMLResponse)
+def billing_cancel(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        "billing_status.html",
+        template_context(
+            request,
+            title="Pago cancelado",
+            message="El proceso de pago se ha cancelado. Puedes intentarlo de nuevo cuando quieras.",
+            button_href="/pricing",
+            button_text="Volver a precios",
+        ),
+    )
+
+
+@app.get("/billing/portal", response_class=HTMLResponse)
+def billing_portal(request: Request, user: dict[str, Any] = Depends(require_user)) -> HTMLResponse:
+    return templates.TemplateResponse(
+        "billing_status.html",
+        template_context(
+            request,
+            title="Portal de cliente",
+            message="Portal de cliente próximamente disponible",
+            button_href="/",
+            button_text="Volver al dashboard",
+        ),
+    )
+
+
+@app.post("/stripe/webhook")
+async def stripe_webhook(request: Request) -> JSONResponse:
+    webhook_secret = os.environ.get("STRIPE_WEBHOOK_SECRET")
+    if not webhook_secret:
+        raise HTTPException(status_code=503, detail="Webhook de Stripe no configurado.")
+    payload = await request.body()
+    signature = request.headers.get("stripe-signature")
+    try:
+        event = stripe.Webhook.construct_event(payload, signature, webhook_secret)
+    except (ValueError, stripe.error.SignatureVerificationError) as exc:
+        logger.warning("Stripe webhook rejected: %s", exc.__class__.__name__)
+        raise HTTPException(status_code=400, detail="Firma de webhook inválida.") from exc
+
+    event_type = event["type"]
+    obj = event["data"]["object"]
+    logger.info("Stripe webhook received: %s", event_type)
+
+    if event_type == "checkout.session.completed":
+        metadata = obj.get("metadata", {})
+        user = fetch_user(int(metadata["user_id"])) if metadata.get("user_id", "").isdigit() else fetch_user_by_email(metadata.get("email", ""))
+        if user:
+            subscription_id = obj.get("subscription")
+            customer_id = obj.get("customer")
+            selected_plan = metadata.get("selected_plan") if metadata.get("selected_plan") in {"basic", "pro"} else None
+            plan = selected_plan or user.get("plan") or "free"
+            current_period_end = None
+            if subscription_id:
+                try:
+                    subscription = stripe.Subscription.retrieve(subscription_id)
+                    plan = plan_from_price_id(subscription_price_id(subscription))
+                    current_period_end = period_end_to_iso(subscription)
+                except stripe.error.StripeError as exc:
+                    logger.warning("Could not retrieve Stripe subscription %s: %s", subscription_id, exc.__class__.__name__)
+            status = "active" if obj.get("payment_status") in {"paid", "no_payment_required"} else obj.get("status", "active")
+            update_user_subscription(
+                int(user["id"]),
+                plan=plan,
+                subscription_status=status,
+                stripe_customer_id=customer_id,
+                stripe_subscription_id=subscription_id,
+                current_period_end=current_period_end,
+            )
+            logger.info("Stripe checkout completed for user_id=%s plan=%s", user["id"], plan)
+        else:
+            logger.warning("Stripe checkout completed without matching local user")
+    elif event_type in {"customer.subscription.created", "customer.subscription.updated"}:
+        subscription_id = obj.get("id")
+        user = fetch_user_by_subscription(subscription_id)
+        metadata = obj.get("metadata", {})
+        if not user and metadata.get("user_id", "").isdigit():
+            user = fetch_user(int(metadata["user_id"]))
+        if not user and metadata.get("email"):
+            user = fetch_user_by_email(metadata["email"])
+        if user:
+            price_id = subscription_price_id(obj)
+            update_user_subscription(
+                int(user["id"]),
+                plan=plan_from_price_id(price_id),
+                subscription_status=obj.get("status"),
+                stripe_customer_id=obj.get("customer"),
+                stripe_subscription_id=subscription_id,
+                current_period_end=period_end_to_iso(obj),
+            )
+            logger.info("Stripe subscription synced for user_id=%s status=%s", user["id"], obj.get("status"))
+    elif event_type == "customer.subscription.deleted":
+        user = fetch_user_by_subscription(obj.get("id"))
+        if user:
+            update_user_subscription(
+                int(user["id"]),
+                plan="free",
+                subscription_status="canceled",
+                current_period_end=period_end_to_iso(obj),
+            )
+            logger.info("Stripe subscription canceled for user_id=%s", user["id"])
+    elif event_type == "invoice.payment_failed":
+        subscription_id = obj.get("subscription")
+        user = fetch_user_by_subscription(subscription_id)
+        if user:
+            update_user_subscription(int(user["id"]), subscription_status="past_due")
+            logger.info("Stripe invoice payment failed for user_id=%s", user["id"])
+
+    return JSONResponse({"received": True})
+
+
 @app.get("/legal/{slug}", response_class=HTMLResponse)
 def legal_page(slug: str, request: Request) -> HTMLResponse:
     page = LEGAL_PAGES.get(slug)
@@ -544,14 +850,26 @@ def analyze(
     }
     if not payload["business_name"] or not payload["review_text"] or not payload["reviewer_name"] or not payload["review_date"]:
         raise HTTPException(status_code=400, detail="Completa todos los campos obligatorios.")
+    allowed, limit_message = can_analyze(user)
+    if not allowed:
+        raise HTTPException(status_code=403, detail=limit_message)
     result = analyze_review(payload)
     claim_id = save_claim(payload, result, int(user["id"]))
-    return JSONResponse({"id": claim_id, **result})
+    analyses_used = count_monthly_analyses(int(user["id"]))
+    return JSONResponse({"id": claim_id, "analyses_used_month": analyses_used, **result})
 
 
 @app.get("/history")
 def history(user: dict[str, Any] = Depends(require_user)) -> JSONResponse:
-    return JSONResponse({"items": fetch_history(int(user["id"]))})
+    enriched = enrich_user(user)
+    return JSONResponse({
+        "items": fetch_history(int(user["id"])),
+        "usage": {
+            "analyses_used_month": enriched["analyses_used_month"],
+            "analysis_limit": enriched["analysis_limit"],
+            "analysis_limit_label": enriched["analysis_limit_label"],
+        },
+    })
 
 
 @app.get("/claims/{claim_id}/pdf")

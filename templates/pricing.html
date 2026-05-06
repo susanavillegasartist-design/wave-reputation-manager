@@ -15,14 +15,103 @@
   <main class="page-shell">
     <nav class="top-nav" aria-label="Navegación">
       <a class="nav-link" href="/">Inicio</a>
-      {% if user %}<span class="plan-badge">Plan activo: {{ user.plan_label }}</span><a class="nav-link" href="/logout">Cerrar sesión</a>{% else %}<a class="nav-link primary-nav" href="/register">Empezar gratis</a>{% endif %}
+      {% if user %}
+      <span class="plan-badge">Plan activo: {{ user.plan_label }}</span>
+      <span class="user-email">{{ user.email }}</span>
+      <a class="nav-link" href="/logout">Cerrar sesión</a>
+      {% else %}
+      <a class="nav-link" href="/login">Iniciar sesión</a>
+      <a class="nav-link primary-nav" href="/register">Empezar gratis</a>
+      {% endif %}
     </nav>
+
     <section class="card legal-page">
       <img class="auth-logo" src="{{ url_for('static', path='logo-wave-music-business.png') }}" alt="Wave Music Business logo">
       <p class="eyebrow">Planes</p>
-      <h1>Pago próximamente disponible</h1>
-      <p class="hero-copy">La estructura de planes Basic y Pro ya está preparada, pero todavía no se ha implementado Stripe ni ningún cobro online.</p>
-      <div class="legal-banner"><strong>Aviso:</strong> esta página es un placeholder. No se realiza ningún cargo desde Wave Reputation Manager en este momento.</div>
+      <h1>Elige cómo proteger tu reputación</h1>
+      <p class="hero-copy">Empieza gratis y actualiza a Basic o Pro cuando necesites más análisis, PDF e historial completo.</p>
+      {% if user %}
+      <div class="account-summary">
+        <strong>{{ user.email }}</strong>
+        <span>Plan: {{ user.plan_label }}</span>
+        <span>Estado: {{ user.subscription_status or 'free' }}</span>
+        <span>Uso mensual: {{ user.analyses_used_month }} / {{ user.analysis_limit_label }}</span>
+      </div>
+      {% endif %}
+    </section>
+
+    <section class="pricing-section pricing-grid" aria-label="Planes de suscripción">
+      <article class="card price-card {% if user and user.plan == 'free' %}is-active{% endif %}">
+        <div>
+          <p class="eyebrow">FREE</p>
+          <h2>Free</h2>
+          <p class="price">0 €</p>
+        </div>
+        <ul>
+          <li>1 análisis gratuito.</li>
+          <li>Reclamación básica.</li>
+          <li>Historial limitado.</li>
+          <li>Registro sin pagar.</li>
+        </ul>
+        {% if user and user.plan == 'free' %}
+        <span class="active-plan-label">Plan activo</span>
+        {% elif user %}
+        <span class="muted-plan-label">Incluido como plan base</span>
+        {% else %}
+        <a class="primary-button" href="/register">Empezar gratis</a>
+        {% endif %}
+      </article>
+
+      <article class="card price-card is-featured {% if user and user.plan == 'basic' %}is-active{% endif %}">
+        <div>
+          <p class="eyebrow">BASIC</p>
+          <h2>Basic</h2>
+          <p class="price">9,99 €<span>/mes</span></p>
+        </div>
+        <ul>
+          <li>10 análisis al mes.</li>
+          <li>Reclamaciones personalizadas.</li>
+          <li>Historial.</li>
+          <li>PDF.</li>
+          <li>Soporte por email.</li>
+        </ul>
+        {% if user and user.plan == 'basic' %}
+        <span class="active-plan-label">Plan activo</span>
+        {% elif user and user.plan == 'pro' %}
+        <span class="muted-plan-label">Tu plan Pro ya incluye Basic</span>
+        {% elif user %}
+        <form method="post" action="/billing/create-checkout-session/basic">
+          <button class="primary-button" type="submit">Suscribirme a Basic</button>
+        </form>
+        {% else %}
+        <a class="primary-button" href="/login">Suscribirme a Basic</a>
+        {% endif %}
+      </article>
+
+      <article class="card price-card {% if user and user.plan == 'pro' %}is-active{% endif %}">
+        <div>
+          <p class="eyebrow">PRO</p>
+          <h2>Pro</h2>
+          <p class="price">24,99 €<span>/mes</span></p>
+        </div>
+        <ul>
+          <li>Análisis ilimitados.</li>
+          <li>PDF profesional.</li>
+          <li>Historial completo.</li>
+          <li>Multi-negocio.</li>
+          <li>Evidencias recomendadas.</li>
+          <li>Soporte prioritario.</li>
+        </ul>
+        {% if user and user.plan == 'pro' %}
+        <span class="active-plan-label">Plan activo</span>
+        {% elif user %}
+        <form method="post" action="/billing/create-checkout-session/pro">
+          <button class="primary-button" type="submit">Suscribirme a Pro</button>
+        </form>
+        {% else %}
+        <a class="primary-button" href="/login">Suscribirme a Pro</a>
+        {% endif %}
+      </article>
     </section>
 
     <footer class="corporate-footer" aria-label="Información corporativa">

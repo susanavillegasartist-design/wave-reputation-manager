@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }} · Wave Reputation Manager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', path='styles.css') }}">
+</head>
+<body>
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+  <main class="page-shell narrow-shell">
+    <nav class="top-nav" aria-label="Navegación">
+      <a class="nav-link" href="/">Inicio</a>
+      <a class="nav-link" href="/pricing">Planes</a>
+      {% if user %}<span class="plan-badge">Plan activo: {{ user.plan_label }}</span><a class="nav-link" href="/logout">Cerrar sesión</a>{% else %}<a class="nav-link primary-nav" href="/login">Iniciar sesión</a>{% endif %}
+    </nav>
+    <section class="card legal-page billing-status">
+      <img class="auth-logo" src="{{ url_for('static', path='logo-wave-music-business.png') }}" alt="Wave Music Business logo">
+      <p class="eyebrow">Billing</p>
+      <h1>{{ title }}</h1>
+      <p class="hero-copy">{{ message }}</p>
+      <div class="actions centered-actions">
+        <a class="primary-button" href="{{ button_href }}">{{ button_text }}</a>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
