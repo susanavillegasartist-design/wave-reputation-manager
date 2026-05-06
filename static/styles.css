@@ -396,3 +396,39 @@ td a { color: var(--blue); font-weight: 800; text-decoration: none; }
   .brand-logo { width: 132px; }
   .auth-shell { padding: 14px; }
 }
+
+.account-summary {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  justify-content: center;
+  margin-top: 20px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--muted);
+}
+
+.account-summary strong,
+.account-summary a { color: var(--text); font-weight: 900; }
+.account-summary a { text-decoration: none; }
+.account-summary a:hover { color: var(--blue); text-decoration: underline; }
+.dashboard-summary { margin: 0 0 20px; }
+.active-plan-label,
+.muted-plan-label {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  font-weight: 900;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 18px;
+}
+.active-plan-label { background: rgba(56, 242, 163, 0.14); color: var(--success); }
+.muted-plan-label { border: 1px solid var(--line); color: var(--muted); }
+.price-card form { margin: 0; }
+.price-card .primary-button { width: 100%; }
+.price-card.is-active { border-color: rgba(56, 242, 163, 0.5); }
+.billing-status .actions { margin-top: 24px; }

@@ -13,6 +13,8 @@ const copyButton = document.querySelector('#copy-button');
 const pdfLink = document.querySelector('#pdf-link');
 const historyBody = document.querySelector('#history-body');
 const toast = document.querySelector('#toast');
+const usageUsed = document.querySelector('#usage-used');
+const usageLimit = document.querySelector('#usage-limit');
 
 const loadingMessages = ['Analizando reseña…', 'Consultando políticas…', 'Generando reclamación…'];
 let loadingTimer;
@@ -59,6 +61,9 @@ function listItem(text) {
 }
 
 function renderResult(data) {
+  if (usageUsed && data.analyses_used_month !== undefined) {
+    usageUsed.textContent = data.analyses_used_month;
+  }
   resultCard.hidden = false;
   viabilityPill.className = `viability ${data.viability}`;
   viabilityPill.textContent = `Viabilidad estimada: ${data.viability}`;
@@ -96,6 +101,10 @@ function renderResult(data) {
 async function refreshHistory() {
   const response = await fetch('/history');
   const data = await response.json();
+  if (data.usage && usageUsed && usageLimit) {
+    usageUsed.textContent = data.usage.analyses_used_month;
+    usageLimit.textContent = data.usage.analysis_limit_label;
+  }
   historyBody.replaceChildren();
   if (!data.items.length) {
     const empty = document.createElement('tr');
@@ -163,9 +172,6 @@ form.addEventListener('submit', async (event) => {
   }
 });
 
-document.querySelectorAll('.pricing-placeholder').forEach((link) => {
-  link.addEventListener('click', () => showToast('Pago próximamente disponible'));
-});
 
 copyButton.addEventListener('click', async () => {
   try {

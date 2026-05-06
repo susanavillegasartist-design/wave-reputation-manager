@@ -26,7 +26,7 @@
       {% for heading, text in page.sections %}
       <div class="legal-block">
         <h2>{{ heading }}</h2>
-        <p>{{ text }}</p>
+        <p>{{ text | safe }}</p>
       </div>
       {% endfor %}
     </section>
