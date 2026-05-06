@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page.title }} · Wave Reputation Manager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', path='styles.css') }}">
+</head>
+<body>
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+  <main class="page-shell narrow-shell">
+    <nav class="top-nav" aria-label="Navegación">
+      <a class="nav-link" href="/">Inicio</a>
+      <a class="nav-link" href="/pricing">Planes</a>
+      {% if user %}<a class="nav-link" href="/logout">Cerrar sesión</a>{% else %}<a class="nav-link primary-nav" href="/login">Iniciar sesión</a>{% endif %}
+    </nav>
+    <section class="card legal-page">
+      <img class="auth-logo" src="{{ url_for('static', path='logo-wave-music-business.png') }}" alt="Wave Music Business logo">
+      <p class="eyebrow">Legal</p>
+      <h1>{{ page.title }}</h1>
+      <p class="hero-copy">{{ page.intro }}</p>
+      {% for heading, text in page.sections %}
+      <div class="legal-block">
+        <h2>{{ heading }}</h2>
+        <p>{{ text }}</p>
+      </div>
+      {% endfor %}
+    </section>
+    <footer class="corporate-footer" aria-label="Información corporativa">
+      <p class="footer-credit">Created by Susana Villegas – Wave Music Business</p>
+      <p>Web: <a href="https://www.wavemusicbusiness.com" target="_blank" rel="noopener noreferrer">www.wavemusicbusiness.com</a></p>
+      <p>Soporte: <a href="mailto:soporte@wavemusicbusiness.com">soporte@wavemusicbusiness.com</a></p>
+      <nav class="footer-legal" aria-label="Páginas legales">
+        <a href="/legal/aviso-legal">Aviso legal</a>
+        <a href="/legal/privacidad">Privacidad</a>
+        <a href="/legal/cookies">Cookies</a>
+        <a href="/legal/terminos">Términos</a>
+        <a href="/legal/reembolsos">Reembolsos</a>
+      </nav>
+    </footer>
+  </main>
+</body>
+</html>
