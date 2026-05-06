@@ -75,6 +75,12 @@ STRIPE_PUBLISHABLE_KEY=
 STRIPE_WEBHOOK_SECRET=
 STRIPE_PRICE_ID_BASIC=
 STRIPE_PRICE_ID_PRO=
+SMTP_HOST=
+SMTP_PORT=
+SMTP_USER=
+SMTP_PASSWORD=
+SMTP_FROM_EMAIL=soporte@wavemusicbusiness.com
+SMTP_FROM_NAME=Wave Music Business
 ```
 
 Variables necesarias:
@@ -86,8 +92,27 @@ Variables necesarias:
 - `STRIPE_WEBHOOK_SECRET`: secreto de firma del endpoint webhook de Stripe.
 - `STRIPE_PRICE_ID_BASIC`: Price ID mensual del plan Basic.
 - `STRIPE_PRICE_ID_PRO`: Price ID mensual del plan Pro.
+- `SMTP_HOST`: host SMTP para emails transaccionales.
+- `SMTP_PORT`: puerto SMTP.
+- `SMTP_USER`: usuario SMTP.
+- `SMTP_PASSWORD`: contraseña SMTP, solo en `.env` o en el gestor seguro de secretos del entorno.
+- `SMTP_FROM_EMAIL`: remitente del email de bienvenida; por defecto `soporte@wavemusicbusiness.com`.
+- `SMTP_FROM_NAME`: nombre visible del remitente; por defecto `Wave Music Business`.
 
 Nunca guardes claves reales en Git, README ni código fuente. `.env` está ignorado por Git.
+
+## Email transaccional de bienvenida
+
+Cuando Stripe confirma una suscripción mediante el webhook `checkout.session.completed` y el usuario queda actualizado a plan **Basic** o **Pro** con estado activo, la aplicación envía un email transaccional de bienvenida desde `soporte@wavemusicbusiness.com`.
+
+El email se envía para:
+
+- **Basic mensual**: 9,99 €/mes.
+- **Pro mensual**: 24,99 €/mes.
+
+El flujo también contempla `customer.subscription.created` y `customer.subscription.updated` como sincronización de respaldo si Stripe entrega esos eventos antes o después del checkout. Para evitar duplicados, cada envío queda reservado en SQLite por `stripe_subscription_id` en la tabla `welcome_email_notifications`; si llega de nuevo el mismo evento o un evento equivalente para la misma suscripción, no se vuelve a enviar.
+
+Si las variables SMTP no están configuradas, la suscripción se activa igualmente, la app continúa funcionando y se registra un warning seguro indicando que el email no se envió por falta de configuración SMTP. Los logs no muestran contraseñas ni secretos SMTP.
 
 ## Ejecución local
 
@@ -145,6 +170,7 @@ La aplicación crea automáticamente `claims.db` en el directorio del proyecto a
 Tablas principales:
 
 - `users`: `id`, `email`, `password_hash`, `plan`, `stripe_customer_id`, `stripe_subscription_id`, `subscription_status`, `current_period_end`, `updated_at`, `created_at`.
+- `welcome_email_notifications`: control idempotente de emails de bienvenida por `stripe_subscription_id`, con estado y fecha de envío.
 - `claims`: historial de reclamaciones con `user_id` para asociar cada análisis al usuario logueado.
 
 Las migraciones ligeras añaden columnas nuevas si no existen, sin duplicarlas.
