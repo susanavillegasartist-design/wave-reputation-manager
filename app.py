@@ -683,6 +683,7 @@ def create_checkout_session(selected_plan: str, request: Request, session: str |
             customer=user.get("stripe_customer_id") or None,
             customer_email=None if user.get("stripe_customer_id") else user["email"],
             line_items=[{"price": price_id, "quantity": 1}],
+            allow_promotion_codes=True,
             success_url=f'{APP_BASE_URL}/billing/success?session_id={{CHECKOUT_SESSION_ID}}',
             cancel_url=f"{APP_BASE_URL}/pricing",
             metadata={"user_id": str(user["id"]), "email": user["email"], "selected_plan": selected_plan},

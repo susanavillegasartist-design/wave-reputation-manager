@@ -131,8 +131,8 @@ Después copia el signing secret del endpoint en `STRIPE_WEBHOOK_SECRET`.
 
 ## Rutas de billing
 
-- `POST /billing/create-checkout-session/basic`: inicia Stripe Checkout para Basic.
-- `POST /billing/create-checkout-session/pro`: inicia Stripe Checkout para Pro.
+- `POST /billing/create-checkout-session/basic`: inicia Stripe Checkout para Basic con códigos promocionales de Stripe habilitados.
+- `POST /billing/create-checkout-session/pro`: inicia Stripe Checkout para Pro con códigos promocionales de Stripe habilitados.
 - `POST /stripe/webhook`: recibe y valida eventos Stripe.
 - `GET /billing/success`: página de éxito tras checkout.
 - `GET /billing/cancel`: página de cancelación.
