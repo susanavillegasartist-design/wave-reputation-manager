@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 import html
 import io
 import json
+import os
 import re
+import secrets
 import sqlite3
 from contextlib import closing
 from dataclasses import dataclass
@@ -11,8 +15,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi import Cookie, Depends, FastAPI, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from reportlab.lib import colors
@@ -24,8 +28,12 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 BASE_DIR = Path(__file__).parent
 POLICIES_PATH = BASE_DIR / "google_policies.json"
 DB_PATH = BASE_DIR / "claims.db"
+SESSION_COOKIE = "wave_session"
+PASSWORD_ITERATIONS = 260_000
+SESSION_SECRET = os.environ.get("WAVE_SESSION_SECRET", "wave-dev-session-secret-change-me")
+PLAN_NAMES = {"free": "Free", "basic": "Basic", "pro": "Pro"}
 
-app = FastAPI(title="Wave Reputation Manager", version="1.0.0")
+app = FastAPI(title="Wave Reputation Manager", version="1.1.0")
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
@@ -89,6 +97,56 @@ RULES = (
     ),
 )
 
+LEGAL_PAGES = {
+    "aviso-legal": {
+        "title": "Aviso legal",
+        "intro": "Información básica de identificación y condiciones de uso del sitio Wave Reputation Manager.",
+        "sections": [
+            ("Titularidad", "Este sitio y el servicio digital Wave Reputation Manager son gestionados por [NOMBRE LEGAL DE LA TITULAR], con NIF/CIF [DATO FISCAL PENDIENTE], domicilio en [DOMICILIO FISCAL PENDIENTE] y contacto soporte@wavemusicbusiness.com."),
+            ("Objeto", "La web ofrece una herramienta de apoyo para analizar textos de reseñas y preparar borradores de reclamación orientativos basados en posibles infracciones de políticas de plataformas."),
+            ("Responsabilidad", "Los contenidos generados son orientativos y deben ser revisados por el usuario antes de su uso. La titular no garantiza resultados concretos ni la eliminación de reseñas."),
+        ],
+    },
+    "privacidad": {
+        "title": "Política de privacidad",
+        "intro": "Texto base sobre el tratamiento de datos en un servicio digital de análisis de reseñas.",
+        "sections": [
+            ("Responsable", "Responsable del tratamiento: [NOMBRE LEGAL DE LA TITULAR], NIF/CIF [DATO FISCAL PENDIENTE], contacto soporte@wavemusicbusiness.com."),
+            ("Datos tratados", "Podemos tratar datos como email, datos necesarios para gestionar la cuenta, plan contratado, datos del negocio, texto de reseñas, contexto aportado, historial de reclamaciones y datos técnicos necesarios para prestar el servicio."),
+            ("Finalidades", "Gestionar el registro e inicio de sesión, prestar el análisis de reseñas, conservar el historial asociado a la cuenta, generar informes PDF, atender soporte y preparar futuras funcionalidades de pago."),
+            ("Conservación y derechos", "Los datos se conservarán mientras exista la cuenta o sean necesarios para obligaciones legales. El usuario podrá solicitar acceso, rectificación, supresión, oposición, limitación o portabilidad escribiendo a soporte@wavemusicbusiness.com."),
+        ],
+    },
+    "cookies": {
+        "title": "Política de cookies",
+        "intro": "Información base sobre cookies técnicas y futuras cookies analíticas o de pago.",
+        "sections": [
+            ("Cookies técnicas", "La aplicación puede usar cookies técnicas imprescindibles para mantener la sesión de usuario y proteger el acceso a funcionalidades privadas."),
+            ("Cookies futuras", "En el futuro podrían incorporarse cookies analíticas, de medición, soporte o pago. Si se activan, se actualizará esta política y, cuando proceda, se solicitará el consentimiento correspondiente."),
+            ("Gestión", "Puedes configurar o bloquear cookies desde tu navegador, aunque las cookies técnicas pueden ser necesarias para iniciar sesión y usar el servicio."),
+        ],
+    },
+    "terminos": {
+        "title": "Términos y condiciones",
+        "intro": "Condiciones básicas de uso de Wave Reputation Manager.",
+        "sections": [
+            ("Naturaleza del servicio", "La herramienta ayuda a preparar reclamaciones basadas en posibles infracciones de políticas, pero no garantiza la eliminación de reseñas ni sustituye asesoramiento legal especializado."),
+            ("Revisión por el usuario", "El usuario es responsable de revisar, completar y validar el texto antes de enviarlo a Google o a cualquier plataforma."),
+            ("Uso permitido", "No se debe usar el servicio para reclamaciones falsas, abusivas, engañosas, automatizadas de forma indebida o destinadas a silenciar críticas legítimas."),
+            ("Planes", "Los planes Free, Basic y Pro describen límites y prestaciones previstos. Los pagos de Basic y Pro se activarán próximamente mediante una integración de pago aún no implementada."),
+        ],
+    },
+    "reembolsos": {
+        "title": "Política de reembolsos",
+        "intro": "Texto base para futuras suscripciones digitales.",
+        "sections": [
+            ("Estado actual", "Actualmente los pagos no están implementados. Los botones de Basic y Pro son placeholders y no generan cargos."),
+            ("Futuras compras", "Cuando existan pagos, se indicarán condiciones de facturación, cancelación y reembolso antes de contratar. [COMPLETAR CON CONDICIONES COMERCIALES Y LEGALES DEFINITIVAS]."),
+            ("Soporte", "Para cualquier incidencia relacionada con planes o facturación futura, contacta con soporte@wavemusicbusiness.com."),
+        ],
+    },
+}
+
 
 def load_policies() -> dict[str, Any]:
     with POLICIES_PATH.open(encoding="utf-8") as file:
@@ -103,8 +161,20 @@ def init_db() -> None:
     with closing(sqlite3.connect(DB_PATH)) as connection:
         connection.execute(
             """
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                plan TEXT NOT NULL DEFAULT 'free',
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
             CREATE TABLE IF NOT EXISTS claims (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
                 created_at TEXT NOT NULL,
                 business_name TEXT NOT NULL,
                 review_text TEXT NOT NULL,
@@ -113,16 +183,115 @@ def init_db() -> None:
                 review_date TEXT NOT NULL,
                 additional_context TEXT NOT NULL,
                 viability TEXT NOT NULL,
-                result_json TEXT NOT NULL
+                result_json TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id)
             )
             """
         )
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(claims)").fetchall()}
+        if "user_id" not in columns:
+            connection.execute("ALTER TABLE claims ADD COLUMN user_id INTEGER REFERENCES users(id)")
         connection.commit()
 
 
 @app.on_event("startup")
 def on_startup() -> None:
     init_db()
+
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), PASSWORD_ITERATIONS)
+    return f"pbkdf2_sha256${PASSWORD_ITERATIONS}${salt}${digest.hex()}"
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    try:
+        algorithm, iterations, salt, expected = password_hash.split("$", 3)
+    except ValueError:
+        return False
+    if algorithm != "pbkdf2_sha256":
+        return False
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), int(iterations))
+    return hmac.compare_digest(digest.hex(), expected)
+
+
+def normalize_email(email: str) -> str:
+    return email.strip().lower()
+
+
+def create_user(email: str, password: str) -> int:
+    init_db()
+    with closing(sqlite3.connect(DB_PATH)) as connection:
+        cursor = connection.execute(
+            """
+            INSERT INTO users (email, password_hash, plan, created_at)
+            VALUES (?, ?, 'free', ?)
+            """,
+            (normalize_email(email), hash_password(password), datetime.now(timezone.utc).isoformat(timespec="seconds")),
+        )
+        connection.commit()
+        return int(cursor.lastrowid)
+
+
+def fetch_user_by_email(email: str) -> dict[str, Any] | None:
+    init_db()
+    with closing(sqlite3.connect(DB_PATH)) as connection:
+        connection.row_factory = sqlite3.Row
+        row = connection.execute("SELECT * FROM users WHERE email = ?", (normalize_email(email),)).fetchone()
+    return dict(row) if row else None
+
+
+def fetch_user(user_id: int | None) -> dict[str, Any] | None:
+    if not user_id:
+        return None
+    init_db()
+    with closing(sqlite3.connect(DB_PATH)) as connection:
+        connection.row_factory = sqlite3.Row
+        row = connection.execute("SELECT id, email, plan, created_at FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not row:
+        return None
+    user = dict(row)
+    user["plan_label"] = PLAN_NAMES.get(user["plan"], user["plan"].title())
+    return user
+
+
+def sign_session(user_id: int) -> str:
+    signature = hmac.new(SESSION_SECRET.encode("utf-8"), str(user_id).encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"{user_id}:{signature}"
+
+
+def read_session(session: str | None) -> int | None:
+    if not session or ":" not in session:
+        return None
+    user_id_text, signature = session.split(":", 1)
+    if not user_id_text.isdigit():
+        return None
+    expected = sign_session(int(user_id_text)).split(":", 1)[1]
+    if not hmac.compare_digest(signature, expected):
+        return None
+    return int(user_id_text)
+
+
+def current_user(session: str | None = Cookie(default=None, alias=SESSION_COOKIE)) -> dict[str, Any] | None:
+    return fetch_user(read_session(session))
+
+
+def require_user(session: str | None = Cookie(default=None, alias=SESSION_COOKIE)) -> dict[str, Any]:
+    user = current_user(session)
+    if not user:
+        raise HTTPException(status_code=401, detail="Inicia sesión o regístrate para analizar reseñas.")
+    return user
+
+
+def template_context(request: Request, **extra: Any) -> dict[str, Any]:
+    return {"request": request, "user": current_user(request.cookies.get(SESSION_COOKIE)), **extra}
+
+
+def login_response(user_id: int) -> RedirectResponse:
+    response = RedirectResponse(url="/", status_code=303)
+    response.set_cookie(SESSION_COOKIE, sign_session(user_id), httponly=True, samesite="lax", max_age=60 * 60 * 24 * 30)
+    return response
 
 
 def normalize(text: str) -> str:
@@ -224,17 +393,18 @@ def analyze_review(payload: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def save_claim(payload: dict[str, Any], result: dict[str, Any]) -> int:
+def save_claim(payload: dict[str, Any], result: dict[str, Any], user_id: int) -> int:
     init_db()
     with closing(sqlite3.connect(DB_PATH)) as connection:
         cursor = connection.execute(
             """
             INSERT INTO claims (
-                created_at, business_name, review_text, stars, reviewer_name, review_date,
+                user_id, created_at, business_name, review_text, stars, reviewer_name, review_date,
                 additional_context, viability, result_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
+                user_id,
                 datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 payload["business_name"],
                 payload["review_text"],
@@ -250,7 +420,7 @@ def save_claim(payload: dict[str, Any], result: dict[str, Any]) -> int:
         return int(cursor.lastrowid)
 
 
-def fetch_history(limit: int = 20) -> list[dict[str, Any]]:
+def fetch_history(user_id: int, limit: int = 20) -> list[dict[str, Any]]:
     init_db()
     with closing(sqlite3.connect(DB_PATH)) as connection:
         connection.row_factory = sqlite3.Row
@@ -258,10 +428,11 @@ def fetch_history(limit: int = 20) -> list[dict[str, Any]]:
             """
             SELECT id, created_at, business_name, stars, reviewer_name, review_date, viability
             FROM claims
+            WHERE user_id = ?
             ORDER BY id DESC
             LIMIT ?
             """,
-            (limit,),
+            (user_id, limit),
         ).fetchall()
     return [dict(row) for row in rows]
 
@@ -270,11 +441,11 @@ def pdf_text(value: Any) -> str:
     return html.escape(str(value)).replace("\n", "<br/>")
 
 
-def fetch_claim(claim_id: int) -> dict[str, Any] | None:
+def fetch_claim(claim_id: int, user_id: int) -> dict[str, Any] | None:
     init_db()
     with closing(sqlite3.connect(DB_PATH)) as connection:
         connection.row_factory = sqlite3.Row
-        row = connection.execute("SELECT * FROM claims WHERE id = ?", (claim_id,)).fetchone()
+        row = connection.execute("SELECT * FROM claims WHERE id = ? AND user_id = ?", (claim_id, user_id)).fetchone()
     if not row:
         return None
     data = dict(row)
@@ -284,11 +455,76 @@ def fetch_claim(claim_id: int) -> dict[str, Any] | None:
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse("index.html", {"request": request, "history": fetch_history()})
+    user = current_user(request.cookies.get(SESSION_COOKIE))
+    history = fetch_history(user["id"]) if user else []
+    return templates.TemplateResponse("index.html", template_context(request, user=user, history=history))
+
+
+@app.get("/register", response_class=HTMLResponse)
+def register_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse("auth.html", template_context(request, mode="register", title="Crear cuenta", error=None))
+
+
+@app.post("/register")
+def register(request: Request, email: str = Form(...), password: str = Form(...)) -> Response:
+    cleaned_email = normalize_email(email)
+    if not cleaned_email or "@" not in cleaned_email or len(password) < 8:
+        return templates.TemplateResponse(
+            "auth.html",
+            {"request": request, "user": None, "mode": "register", "title": "Crear cuenta", "error": "Introduce un email válido y una contraseña de al menos 8 caracteres."},
+            status_code=400,
+        )
+    try:
+        user_id = create_user(cleaned_email, password)
+    except sqlite3.IntegrityError:
+        return templates.TemplateResponse(
+            "auth.html",
+            {"request": request, "user": None, "mode": "register", "title": "Crear cuenta", "error": "Ya existe una cuenta con ese email."},
+            status_code=400,
+        )
+    return login_response(user_id)
+
+
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse("auth.html", template_context(request, mode="login", title="Iniciar sesión", error=None))
+
+
+@app.post("/login")
+def login(request: Request, email: str = Form(...), password: str = Form(...)) -> Response:
+    user = fetch_user_by_email(email)
+    if not user or not verify_password(password, user["password_hash"]):
+        return templates.TemplateResponse(
+            "auth.html",
+            {"request": request, "user": None, "mode": "login", "title": "Iniciar sesión", "error": "Email o contraseña incorrectos."},
+            status_code=400,
+        )
+    return login_response(int(user["id"]))
+
+
+@app.get("/logout")
+def logout() -> RedirectResponse:
+    response = RedirectResponse(url="/", status_code=303)
+    response.delete_cookie(SESSION_COOKIE)
+    return response
+
+
+@app.get("/pricing", response_class=HTMLResponse)
+def pricing_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse("pricing.html", template_context(request))
+
+
+@app.get("/legal/{slug}", response_class=HTMLResponse)
+def legal_page(slug: str, request: Request) -> HTMLResponse:
+    page = LEGAL_PAGES.get(slug)
+    if not page:
+        raise HTTPException(status_code=404, detail="Página legal no encontrada.")
+    return templates.TemplateResponse("legal.html", template_context(request, page=page))
 
 
 @app.post("/analyze")
 def analyze(
+    user: dict[str, Any] = Depends(require_user),
     business_name: str = Form(...),
     review_text: str = Form(...),
     stars: int = Form(...),
@@ -309,18 +545,18 @@ def analyze(
     if not payload["business_name"] or not payload["review_text"] or not payload["reviewer_name"] or not payload["review_date"]:
         raise HTTPException(status_code=400, detail="Completa todos los campos obligatorios.")
     result = analyze_review(payload)
-    claim_id = save_claim(payload, result)
+    claim_id = save_claim(payload, result, int(user["id"]))
     return JSONResponse({"id": claim_id, **result})
 
 
 @app.get("/history")
-def history() -> JSONResponse:
-    return JSONResponse({"items": fetch_history()})
+def history(user: dict[str, Any] = Depends(require_user)) -> JSONResponse:
+    return JSONResponse({"items": fetch_history(int(user["id"]))})
 
 
 @app.get("/claims/{claim_id}/pdf")
-def export_pdf(claim_id: int) -> StreamingResponse:
-    claim = fetch_claim(claim_id)
+def export_pdf(claim_id: int, user: dict[str, Any] = Depends(require_user)) -> StreamingResponse:
+    claim = fetch_claim(claim_id, int(user["id"]))
     if not claim:
         raise HTTPException(status_code=404, detail="Reclamación no encontrada.")
 

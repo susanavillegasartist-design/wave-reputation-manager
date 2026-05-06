@@ -14,6 +14,17 @@
   <div class="ambient ambient-two"></div>
 
   <main class="page-shell">
+    <nav class="top-nav" aria-label="Acceso de usuario">
+      {% if user %}
+      <span class="plan-badge">Plan activo: {{ user.plan_label }}</span>
+      <span class="user-email">{{ user.email }}</span>
+      <a class="nav-link" href="/logout">Cerrar sesión</a>
+      {% else %}
+      <a class="nav-link" href="/login">Iniciar sesión</a>
+      <a class="nav-link primary-nav" href="/register">Crear cuenta gratis</a>
+      {% endif %}
+    </nav>
+
     <section class="hero card">
       <div class="brand-identity">
         <img class="brand-logo" src="{{ url_for('static', path='logo-wave-music-business.png') }}" alt="Wave Music Business logo">
@@ -27,6 +38,17 @@
       <strong>Aviso legal:</strong> la herramienta no garantiza la retirada de reseñas; solo ayuda a preparar reclamaciones basadas en políticas. Verifica siempre las políticas oficiales vigentes antes de enviar la solicitud.
     </section>
 
+    {% if not user %}
+    <section class="auth-gate card">
+      <h2>Acceso necesario para analizar</h2>
+      <p>Puedes ver la home y los planes. Para analizar una reseña, guardar historial y exportar PDF, inicia sesión o crea una cuenta Free.</p>
+      <div class="actions centered-actions">
+        <a class="primary-button" href="/register">Empezar gratis</a>
+        <a class="secondary-button" href="/login">Iniciar sesión</a>
+      </div>
+    </section>
+    {% endif %}
+
     <div class="workspace">
       <section class="card form-card">
         <div class="section-heading">
@@ -37,7 +59,7 @@
           </div>
         </div>
 
-        <form id="analysis-form" class="analysis-form">
+        <form id="analysis-form" class="analysis-form" data-authenticated="{{ 'true' if user else 'false' }}">
           <label>
             Nombre del negocio
             <input name="business_name" type="text" placeholder="Ej. Clínica Wave Dental" required>
@@ -131,7 +153,7 @@
         <span class="step">03</span>
         <div>
           <h2>Historial de reclamaciones</h2>
-          <p>Últimos análisis guardados en SQLite.</p>
+          <p>{% if user %}Últimos análisis guardados en SQLite para tu cuenta.{% else %}Inicia sesión para consultar tu historial asociado.{% endif %}</p>
         </div>
       </div>
       <div class="history-table-wrap">
@@ -157,23 +179,66 @@
               <td><a href="/claims/{{ item.id }}/pdf">PDF</a></td>
             </tr>
             {% else %}
-            <tr class="empty-row"><td colspan="6">Todavía no hay reclamaciones guardadas.</td></tr>
+            <tr class="empty-row"><td colspan="6">{% if user %}Todavía no hay reclamaciones guardadas.{% else %}Historial disponible al iniciar sesión.{% endif %}</td></tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
     </section>
 
+    <section class="pricing-section" id="planes">
+      <div class="section-heading centered-heading">
+        <span class="step">€</span>
+        <div>
+          <h2>Planes</h2>
+          <p>Elige el nivel adecuado para gestionar la reputación de tu negocio.</p>
+        </div>
+      </div>
+      <div class="pricing-grid">
+        <article class="card price-card">
+          <h3>Free</h3>
+          <p class="price">0 €</p>
+          <ul>
+            <li>1 análisis gratuito</li>
+            <li>Reclamación básica</li>
+            <li>Historial limitado</li>
+          </ul>
+          <a class="primary-button" href="/register">Empezar gratis</a>
+        </article>
+        <article class="card price-card is-featured">
+          <h3>Basic</h3>
+          <p class="price">9,99 €<span>/mes</span></p>
+          <ul>
+            <li>10 análisis al mes</li>
+            <li>Reclamaciones personalizadas</li>
+            <li>Historial, PDF y soporte por email</li>
+          </ul>
+          <a class="secondary-button pricing-placeholder" href="/pricing">Suscribirme a Basic</a>
+        </article>
+        <article class="card price-card">
+          <h3>Pro</h3>
+          <p class="price">24,99 €<span>/mes</span></p>
+          <ul>
+            <li>Análisis ilimitados</li>
+            <li>PDF profesional e historial completo</li>
+            <li>Multi-negocio, evidencias recomendadas y soporte prioritario</li>
+          </ul>
+          <a class="secondary-button pricing-placeholder" href="/pricing">Suscribirme a Pro</a>
+        </article>
+      </div>
+    </section>
+
     <footer class="corporate-footer" aria-label="Información corporativa">
       <p class="footer-credit">Created by Susana Villegas – Wave Music Business</p>
-      <p>
-        Web:
-        <a href="https://www.wavemusicbusiness.com" target="_blank" rel="noopener noreferrer">www.wavemusicbusiness.com</a>
-      </p>
-      <p>
-        Soporte:
-        <a href="mailto:soporte@wavemusicbusiness.com">soporte@wavemusicbusiness.com</a>
-      </p>
+      <p>Web: <a href="https://www.wavemusicbusiness.com" target="_blank" rel="noopener noreferrer">www.wavemusicbusiness.com</a></p>
+      <p>Soporte: <a href="mailto:soporte@wavemusicbusiness.com">soporte@wavemusicbusiness.com</a></p>
+      <nav class="footer-legal" aria-label="Páginas legales">
+        <a href="/legal/aviso-legal">Aviso legal</a>
+        <a href="/legal/privacidad">Privacidad</a>
+        <a href="/legal/cookies">Cookies</a>
+        <a href="/legal/terminos">Términos</a>
+        <a href="/legal/reembolsos">Reembolsos</a>
+      </nav>
     </footer>
   </main>
 

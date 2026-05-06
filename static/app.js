@@ -140,6 +140,11 @@ async function refreshHistory() {
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
+  if (form.dataset.authenticated !== 'true') {
+    showToast('Inicia sesión o regístrate para analizar reseñas.', true);
+    window.setTimeout(() => { window.location.href = '/login'; }, 900);
+    return;
+  }
   setLoading(true);
   try {
     const formData = new FormData(form);
@@ -156,6 +161,10 @@ form.addEventListener('submit', async (event) => {
   } finally {
     setLoading(false);
   }
+});
+
+document.querySelectorAll('.pricing-placeholder').forEach((link) => {
+  link.addEventListener('click', () => showToast('Pago próximamente disponible'));
 });
 
 copyButton.addEventListener('click', async () => {
