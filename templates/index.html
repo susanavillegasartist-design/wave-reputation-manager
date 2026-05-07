@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIINfQ72X1t27YHkzH7fTN2C1qH5XfP3H6M=" crossorigin="">
   <link rel="stylesheet" href="{{ url_for('static', path='styles.css') }}">
 </head>
 <body>
@@ -69,6 +70,9 @@
           <p>Elige el módulo que necesitas y trabaja sobre tu reputación de marca sin perder el acceso a las herramientas actuales.</p>
         </div>
       </div>
+      <div class="actions dashboard-actions">
+        <button class="primary-button" type="button" data-report="general">Descargar informe general</button>
+      </div>
       <div class="module-grid">
         <article class="card module-card module-card-featured">
           <span class="module-icon">◎</span>
@@ -127,7 +131,10 @@
               <label>Web o redes sociales <span class="optional-label">opcional</span><input name="channels" type="text" placeholder="https://... / @usuario"></label>
               <label>Ubicación principal <span class="optional-label">opcional</span><input name="location" type="text" placeholder="Ej. Madrid, España"></label>
             </div>
-            <button class="primary-button" type="submit">Generar radiografía</button>
+            <div class="actions">
+              <button class="primary-button" type="submit">Generar radiografía</button>
+              <button class="secondary-button" type="button" data-report="radiography">Descargar informe de radiografía</button>
+            </div>
           </form>
         </article>
         <article class="card result-card reputation-result" id="radiography-result" hidden>
@@ -197,10 +204,13 @@
             <textarea name="additional_context" rows="4" placeholder="Ej. No consta reserva, posible exempleado, capturas de amenaza, etc."></textarea>
           </label>
 
-          <button id="analyze-button" class="primary-button" type="submit">
-            <span class="button-text">Analizar reseña</span>
-            <span class="button-loader" aria-hidden="true"></span>
-          </button>
+          <div class="actions">
+            <button id="analyze-button" class="primary-button" type="submit">
+              <span class="button-text">Analizar reseña</span>
+              <span class="button-loader" aria-hidden="true"></span>
+            </button>
+            <button class="secondary-button" type="button" data-report="review">Descargar informe de reseña</button>
+          </div>
 
           <div id="progress" class="progress" aria-live="polite" hidden>
             <div class="progress-step is-active">Analizando reseña…</div>
@@ -290,14 +300,13 @@
               <div id="delegations-container" class="delegations-container"></div>
             </div>
             <button class="primary-button" type="submit">Crear mapa empresarial</button>
+            <button class="secondary-button" type="button" data-report="map">Descargar informe de mapa empresarial</button>
           </form>
         </article>
         <article class="card result-card company-map-card">
           <div class="coverage-pill" id="coverage-pill">Cobertura pendiente</div>
-          <div class="simple-map" id="company-map" aria-label="Mapa visual de sedes y delegaciones">
-            <div class="map-grid-lines"></div>
-            <p>Añade tu sede principal y delegaciones para visualizar tu presencia territorial.</p>
-          </div>
+          <div class="map-warning" id="map-warning" hidden></div>
+          <div class="real-map" id="business-map" aria-label="Mapa interactivo de sedes y delegaciones"></div>
           <div class="locations-list" id="locations-list"></div>
           <div class="future-note">Fase futura: reputación por sede, reseñas negativas, incidencias detectadas, recomendaciones y estado reputacional por ubicación.</div>
         </article>
@@ -313,6 +322,9 @@
         </div>
       </div>
       <div class="card improvement-card">
+        <div class="actions improvement-actions">
+          <button class="secondary-button" type="button" data-report="improvement">Descargar plan de mejora</button>
+        </div>
         <div class="improvement-grid" id="improvement-grid">
           <article><strong>Google Business</strong><p>Actualizar horarios, servicios, fotos reales, respuestas a reseñas y señales de confianza.</p></article>
           <article><strong>Web</strong><p>Clarificar propuesta de valor, pruebas sociales, garantías, contacto visible y llamadas a la acción.</p></article>
@@ -331,6 +343,10 @@
           <h2>Informes / Historial</h2>
           <p>{% if user %}Últimas reclamaciones guardadas para tu cuenta. Próximamente podrás consultar aquí todos tus informes reputacionales generados.{% else %}Inicia sesión para consultar tu historial asociado. Próximamente podrás consultar aquí tus informes reputacionales generados.{% endif %}</p>
         </div>
+      </div>
+      <div class="prepared-history-note">Próximamente podrás consultar aquí todos tus informes generados. De momento puedes descargar los informes con los datos actuales del dashboard.</div>
+      <div class="actions">
+        <button class="secondary-button" type="button" data-report="general">Descargar informe general</button>
       </div>
       <div class="history-table-wrap">
         <table class="history-table">
@@ -419,6 +435,7 @@
   </main>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="{{ url_for('static', path='app.js') }}"></script>
 </body>
 </html>
