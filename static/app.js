@@ -202,12 +202,16 @@ const companyMapForm = document.querySelector('#company-map-form');
 const addDelegationButton = document.querySelector('#add-delegation');
 const delegationsContainer = document.querySelector('#delegations-container');
 const businessMapElement = document.querySelector('#business-map');
+const businessMapInsetElement = document.querySelector('#business-map-inset');
+const mapInsetTitle = document.querySelector('#map-inset-title');
 const mapWarning = document.querySelector('#map-warning');
 const locationsList = document.querySelector('#locations-list');
 const coveragePill = document.querySelector('#coverage-pill');
 const improvementGrid = document.querySelector('#improvement-grid');
 let businessMap;
+let businessInsetMap;
 let businessMarkersLayer;
+let businessInsetMarkersLayer;
 
 function formValue(formData, key, fallback = '') {
   return String(formData.get(key) || fallback).trim();
@@ -378,18 +382,46 @@ function resolveCoordinates(location) {
   return { latLng: [40.4168, -3.7038], approximated: true, fallback: true };
 }
 
+function addOpenStreetMapLayer(map) {
+  return L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors',
+  }).addTo(map);
+}
+
 function ensureBusinessMap() {
   if (!businessMapElement || !window.L) return null;
   if (!businessMap) {
-    businessMap = L.map(businessMapElement, { scrollWheelZoom: true }).setView([40.4168, -3.7038], 6);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; OpenStreetMap contributors',
-    }).addTo(businessMap);
+    businessMap = L.map(businessMapElement, {
+      scrollWheelZoom: false,
+      zoomControl: true,
+      attributionControl: true,
+    }).setView([40.4168, -3.7038], 5);
+    addOpenStreetMapLayer(businessMap);
     businessMarkersLayer = L.layerGroup().addTo(businessMap);
     window.setTimeout(() => businessMap.invalidateSize(), 120);
   }
   return businessMap;
+}
+
+function ensureBusinessInsetMap() {
+  if (!businessMapInsetElement || !window.L) return null;
+  if (!businessInsetMap) {
+    businessInsetMap = L.map(businessMapInsetElement, {
+      scrollWheelZoom: false,
+      zoomControl: false,
+      attributionControl: false,
+      dragging: false,
+      doubleClickZoom: false,
+      boxZoom: false,
+      keyboard: false,
+      tap: false,
+    }).setView([40.4168, -3.7038], 13);
+    addOpenStreetMapLayer(businessInsetMap);
+    businessInsetMarkersLayer = L.layerGroup().addTo(businessInsetMap);
+    window.setTimeout(() => businessInsetMap.invalidateSize(), 140);
+  }
+  return businessInsetMap;
 }
 
 function markerPopup(location) {
@@ -404,16 +436,39 @@ function markerPopup(location) {
   return `<div class="leaflet-popup-card"><strong>${escapeHtml(location.name)}</strong>${rows.map(([label, value]) => `<span><b>${label}:</b> ${escapeHtml(value || 'No indicado')}</span>`).join('')}</div>`;
 }
 
+function focusBusinessInset(location) {
+  const insetMap = ensureBusinessInsetMap();
+  if (!insetMap || !businessInsetMarkersLayer || !location) return;
+  businessInsetMarkersLayer.clearLayers();
+  L.marker(location.coordinates, { title: `${location.name} · ${location.city}` })
+    .bindPopup(markerPopup(location))
+    .addTo(businessInsetMarkersLayer);
+  insetMap.setView(location.coordinates, location.fallback ? 11 : 14, { animate: true });
+  if (mapInsetTitle) mapInsetTitle.textContent = location.name || 'Ubicación seleccionada';
+  window.setTimeout(() => insetMap.invalidateSize(), 120);
+}
+
+function setSelectedLocationItem(selectedIndex) {
+  [...locationsList.querySelectorAll('.location-item')].forEach((item, index) => {
+    item.classList.toggle('is-selected', index === selectedIndex);
+  });
+}
+
 function initializeEmptyBusinessMap() {
   const map = ensureBusinessMap();
+  const insetMap = ensureBusinessInsetMap();
   if (!map && businessMapElement) {
     businessMapElement.textContent = 'No se ha podido cargar Leaflet. Revisa la conexión y recarga el dashboard.';
+  }
+  if (!insetMap && businessMapInsetElement) {
+    businessMapInsetElement.textContent = 'No se ha podido cargar la lupa del mapa.';
   }
 }
 
 function renderCompanyMap(companyName, presenceType, locations) {
   coveragePill.textContent = `${companyName} · Cobertura ${presenceType}`;
   const map = ensureBusinessMap();
+  ensureBusinessInsetMap();
   const resolvedLocations = locations.map((location) => {
     const resolved = resolveCoordinates(location);
     return { ...location, coordinates: resolved.latLng, approximated: resolved.approximated, fallback: resolved.fallback };
@@ -423,16 +478,21 @@ function renderCompanyMap(companyName, presenceType, locations) {
   if (map && businessMarkersLayer) {
     businessMarkersLayer.clearLayers();
     const bounds = [];
-    resolvedLocations.forEach((location) => {
+    resolvedLocations.forEach((location, index) => {
       const marker = L.marker(location.coordinates, { title: `${location.name} · ${location.city}` })
         .bindPopup(markerPopup(location));
+      marker.on('click', () => {
+        focusBusinessInset(location);
+        setSelectedLocationItem(index);
+      });
       marker.addTo(businessMarkersLayer);
       bounds.push(location.coordinates);
     });
-    if (bounds.length > 1) map.fitBounds(bounds, { padding: [34, 34], maxZoom: 12 });
-    if (bounds.length === 1) map.setView(bounds[0], 12);
+    if (bounds.length > 1) map.fitBounds(bounds, { padding: [46, 46], maxZoom: 7 });
+    if (bounds.length === 1) map.setView(bounds[0], 6);
     window.setTimeout(() => map.invalidateSize(), 120);
   }
+  focusBusinessInset(resolvedLocations.find((location) => location.isMain) || resolvedLocations[0]);
 
   const fallbackLocations = resolvedLocations.filter((location) => location.fallback);
   mapWarning.hidden = fallbackLocations.length === 0;
@@ -441,15 +501,30 @@ function renderCompanyMap(companyName, presenceType, locations) {
     : '';
 
   locationsList.replaceChildren();
-  resolvedLocations.forEach((location) => {
+  resolvedLocations.forEach((location, index) => {
     const item = document.createElement('article');
     item.className = `location-item ${location.isMain ? 'is-main' : ''}`;
     const name = document.createElement('strong');
     const type = document.createElement('span');
     const address = document.createElement('p');
+    item.tabIndex = 0;
+    item.setAttribute('role', 'button');
+    item.setAttribute('aria-label', `Centrar lupa en ${location.name}`);
+    if (location.isMain) item.classList.add('is-selected');
     name.textContent = location.name;
     type.textContent = location.isMain ? 'Sede principal' : location.type;
     address.textContent = [location.address, location.city, location.province, location.postal, location.country].filter(Boolean).join(', ');
+    item.addEventListener('click', () => {
+      focusBusinessInset(location);
+      setSelectedLocationItem(index);
+    });
+    item.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        focusBusinessInset(location);
+        setSelectedLocationItem(index);
+      }
+    });
     item.append(name, type, address);
     locationsList.appendChild(item);
   });
