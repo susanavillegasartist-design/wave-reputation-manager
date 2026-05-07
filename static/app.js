@@ -201,15 +201,11 @@ const radiographyInsights = document.querySelector('#radiography-insights');
 const companyMapForm = document.querySelector('#company-map-form');
 const addDelegationButton = document.querySelector('#add-delegation');
 const delegationsContainer = document.querySelector('#delegations-container');
-const businessMapElement = document.querySelector('#business-map');
-const recalculateMapButton = document.querySelector('#recalculate-map');
-const mapWarning = document.querySelector('#map-warning');
 const locationsList = document.querySelector('#locations-list');
 const coveragePill = document.querySelector('#coverage-pill');
+const presenceSummaryGrid = document.querySelector('#presence-summary-grid');
+const territorialSummary = document.querySelector('#territorial-summary');
 const improvementGrid = document.querySelector('#improvement-grid');
-let businessMap;
-let businessMarkersLayer;
-let lastResolvedMapLocations = [];
 
 function formValue(formData, key, fallback = '') {
   return String(formData.get(key) || fallback).trim();
@@ -355,215 +351,80 @@ function collectDelegations(formData) {
   });
 }
 
-const CITY_COORDINATES = {
-  'a coruña': [43.3623, -8.4115], albacete: [38.9943, -1.8585], alicante: [38.3452, -0.4810], almeria: [36.8340, -2.4637],
-  avila: [40.6565, -4.6818], badajoz: [38.8794, -6.9707], barcelona: [41.3874, 2.1686], bilbao: [43.2630, -2.9350],
-  burgos: [42.3439, -3.6969], caceres: [39.4753, -6.3724], cadiz: [36.5271, -6.2886], castellon: [39.9864, -0.0513],
-  'ciudad real': [38.9848, -3.9274], cordoba: [37.8882, -4.7794], cuenca: [40.0704, -2.1374], girona: [41.9794, 2.8214],
-  granada: [37.1773, -3.5986], guadalajara: [40.6325, -3.1602], huelva: [37.2614, -6.9447], huesca: [42.1401, -0.4089],
-  jaen: [37.7796, -3.7849], leon: [42.5987, -5.5671], lleida: [41.6176, 0.6200], logrono: [42.4627, -2.4449],
-  madrid: [40.4168, -3.7038], malaga: [36.7213, -4.4214], murcia: [37.9922, -1.1307], oviedo: [43.3619, -5.8494],
-  palencia: [42.0097, -4.5288], palma: [39.5696, 2.6502], pamplona: [42.8125, -1.6458], pontevedra: [42.4299, -8.6446],
-  salamanca: [40.9701, -5.6635], 'san sebastian': [43.3183, -1.9812], santander: [43.4623, -3.8099], segovia: [40.9429, -4.1088],
-  sevilla: [37.3891, -5.9845], soria: [41.7666, -2.4790], tarragona: [41.1189, 1.2445], teruel: [40.3457, -1.1065],
-  toledo: [39.8628, -4.0273], valencia: [39.4699, -0.3763], valladolid: [41.6523, -4.7245], vigo: [42.2406, -8.7207],
-  vitoria: [42.8467, -2.6716], zamora: [41.5035, -5.7446], zaragoza: [41.6488, -0.8891], ceuta: [35.8894, -5.3213], melilla: [35.2923, -2.9381],
-};
 
-function normalizeCity(value) {
-  return String(value || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+function uniqueValues(locations, key) {
+  return [...new Set(locations.map((location) => location[key]).filter(Boolean))];
 }
 
-function resolveCoordinates(location) {
-  const key = normalizeCity(location.city || location.province);
-  if (CITY_COORDINATES[key]) return { latLng: CITY_COORDINATES[key], approximated: true, fallback: false };
-  return { latLng: [40.4168, -3.7038], approximated: true, fallback: true };
+
+function createPresenceMetric(label, value) {
+  const article = document.createElement('article');
+  article.className = 'presence-metric';
+  const heading = document.createElement('span');
+  const content = document.createElement('strong');
+  heading.textContent = label;
+  content.textContent = value || 'No indicado';
+  article.append(heading, content);
+  return article;
 }
 
-function isBusinessMapVisible() {
-  if (!businessMapElement) return false;
-  const rect = businessMapElement.getBoundingClientRect();
-  return rect.width > 0 && rect.height > 0 && window.getComputedStyle(businessMapElement).display !== 'none';
-}
+function renderPresenceCards(companyName, presenceType, locations) {
+  const cleanLocations = locations.filter((location) => location.name || location.city || location.address);
+  const mainLocation = cleanLocations.find((location) => location.isMain) || cleanLocations[0];
+  const cities = uniqueValues(cleanLocations, 'city');
+  const provinces = uniqueValues(cleanLocations, 'province');
 
-function addOpenStreetMapLayer(map) {
-  return L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '&copy; OpenStreetMap contributors',
-  }).addTo(map);
-}
-
-function safeInvalidateBusinessMap() {
-  if (!businessMap) return;
-
-  setTimeout(() => {
-    if (businessMap) {
-      businessMap.invalidateSize(true);
-    }
-  }, 100);
-
-  setTimeout(() => {
-    if (businessMap) {
-      businessMap.invalidateSize(true);
-    }
-  }, 350);
-
-  requestAnimationFrame(() => {
-    if (businessMap) {
-      businessMap.invalidateSize(true);
-    }
-  });
-}
-
-function applyBusinessMapView(locations = lastResolvedMapLocations) {
-  if (!businessMap) return;
-  const validLocations = locations.filter((location) => Array.isArray(location.coordinates) && location.coordinates.length === 2);
-
-  if (validLocations.length === 1) {
-    businessMap.setView(validLocations[0].coordinates, 13);
-  } else if (validLocations.length > 1) {
-    businessMap.fitBounds(validLocations.map((location) => location.coordinates), { padding: [40, 40] });
-  } else {
-    businessMap.setView([40.4168, -3.7038], 6);
-  }
-
-  safeInvalidateBusinessMap();
-}
-
-function ensureBusinessMap() {
-  if (!businessMapElement || !window.L || !isBusinessMapVisible()) return null;
-
-  if (!businessMap) {
-    businessMap = L.map(businessMapElement, {
-      scrollWheelZoom: false,
-      zoomControl: true,
-      attributionControl: true,
-    }).setView([40.4168, -3.7038], 6);
-    addOpenStreetMapLayer(businessMap);
-    businessMarkersLayer = L.layerGroup().addTo(businessMap);
-  }
-
-  if (!businessMarkersLayer) {
-    businessMarkersLayer = L.layerGroup().addTo(businessMap);
-  }
-
-  safeInvalidateBusinessMap();
-  return businessMap;
-}
-
-function initializeBusinessMapWhenVisible() {
-  if (ensureBusinessMap()) {
-    if (lastResolvedMapLocations.length) {
-      refreshBusinessMarkers(lastResolvedMapLocations);
-    } else {
-      applyBusinessMapView();
-    }
-    return;
-  }
-
-  if (!businessMapElement || !window.L) {
-    if (businessMapElement) {
-      businessMapElement.textContent = 'No se ha podido cargar Leaflet. Revisa la conexión y recarga el dashboard.';
-    }
-    return;
-  }
-
-  if ('IntersectionObserver' in window) {
-    const observer = new IntersectionObserver((entries) => {
-      if (!entries.some((entry) => entry.isIntersecting)) return;
-      observer.disconnect();
-      if (!ensureBusinessMap()) return;
-      if (lastResolvedMapLocations.length) {
-        refreshBusinessMarkers(lastResolvedMapLocations);
-      } else {
-        applyBusinessMapView();
-      }
-    }, { threshold: 0.1 });
-    observer.observe(businessMapElement);
-  }
-}
-
-function markerPopup(location) {
-  const rows = [
-    ['Nombre', location.name],
-    ['Tipo', location.isMain ? 'Sede principal' : location.type],
-    ['Dirección', location.address],
-    ['Ciudad', location.city],
-    ['Provincia', location.province],
-    ['País', location.country],
-  ];
-  return `<div class="leaflet-popup-card"><strong>${escapeHtml(location.name)}</strong>${rows.map(([label, value]) => `<span><b>${label}:</b> ${escapeHtml(value || 'No indicado')}</span>`).join('')}</div>`;
-}
-
-function refreshBusinessMarkers(locations) {
-  const map = ensureBusinessMap();
-  if (!map || !businessMarkersLayer) return;
-
-  businessMarkersLayer.clearLayers();
-  locations.forEach((location, index) => {
-    L.marker(location.coordinates, { title: `${location.name} · ${location.city}` })
-      .bindPopup(markerPopup(location))
-      .on('click', () => setSelectedLocationItem(index))
-      .addTo(businessMarkersLayer);
-  });
-
-  applyBusinessMapView(locations);
-}
-
-function setSelectedLocationItem(selectedIndex) {
-  [...locationsList.querySelectorAll('.location-item')].forEach((item, index) => {
-    item.classList.toggle('is-selected', index === selectedIndex);
-  });
-}
-
-function renderCompanyMap(companyName, presenceType, locations) {
   coveragePill.textContent = `${companyName} · Cobertura ${presenceType}`;
-  const resolvedLocations = locations.map((location) => {
-    const resolved = resolveCoordinates(location);
-    return { ...location, coordinates: resolved.latLng, approximated: resolved.approximated, fallback: resolved.fallback };
-  });
-  dashboardState.map = { companyName, presenceType, locations: resolvedLocations };
-  lastResolvedMapLocations = resolvedLocations;
-  refreshBusinessMarkers(resolvedLocations);
+  dashboardState.map = { companyName, presenceType, locations: cleanLocations };
 
-  const fallbackLocations = resolvedLocations.filter((location) => location.fallback);
-  mapWarning.hidden = fallbackLocations.length === 0;
-  mapWarning.textContent = fallbackLocations.length
-    ? `Ubicación aproximada: no se encontró ${fallbackLocations.map((location) => location.city || location.name).join(', ')}. Se ha usado Madrid como referencia por defecto.`
-    : '';
+  presenceSummaryGrid.replaceChildren(
+    createPresenceMetric('Empresa', companyName),
+    createPresenceMetric('Tipo de cobertura', presenceType),
+    createPresenceMetric('Total de sedes/delegaciones', String(cleanLocations.length)),
+    createPresenceMetric('Sede principal', mainLocation?.name || 'Pendiente de completar'),
+  );
 
   locationsList.replaceChildren();
-  resolvedLocations.forEach((location, index) => {
+  if (!cleanLocations.length) {
+    const empty = document.createElement('article');
+    empty.className = 'location-item presence-card-empty';
+    empty.innerHTML = '<strong>Añade ubicaciones</strong><p>Completa la sede principal y las delegaciones para construir la presencia empresarial.</p>';
+    locationsList.appendChild(empty);
+  }
+
+  cleanLocations.forEach((location) => {
     const item = document.createElement('article');
-    item.className = `location-item ${location.isMain ? 'is-main' : ''}`;
+    item.className = `location-item presence-location-card ${location.isMain ? 'is-main' : ''}`;
     const name = document.createElement('strong');
     const type = document.createElement('span');
     const address = document.createElement('p');
-    item.tabIndex = 0;
-    item.setAttribute('role', 'button');
-    item.setAttribute('aria-label', `Centrar mapa en ${location.name}`);
-    if (location.isMain) item.classList.add('is-selected');
-    name.textContent = location.name;
-    type.textContent = location.isMain ? 'Sede principal' : location.type;
-    address.textContent = [location.address, location.city, location.province, location.postal, location.country].filter(Boolean).join(', ');
-    item.addEventListener('click', () => {
-      ensureBusinessMap();
-      if (businessMap) businessMap.setView(location.coordinates, 13);
-      safeInvalidateBusinessMap();
-      setSelectedLocationItem(index);
-    });
-    item.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        ensureBusinessMap();
-        if (businessMap) businessMap.setView(location.coordinates, 13);
-        safeInvalidateBusinessMap();
-        setSelectedLocationItem(index);
-      }
-    });
-    item.append(name, type, address);
+    const territory = document.createElement('p');
+    const country = document.createElement('p');
+    name.textContent = location.name || (location.isMain ? 'Sede principal' : 'Delegación');
+    type.textContent = location.isMain ? 'Sede principal' : (location.type || 'Delegación');
+    address.textContent = location.address || 'Dirección pendiente';
+    territory.textContent = [location.city, location.province].filter(Boolean).join(' / ') || 'Ciudad o provincia pendiente';
+    country.textContent = location.country || 'País pendiente';
+    item.append(name, type, address, territory, country);
     locationsList.appendChild(item);
   });
+
+  territorialSummary.innerHTML = `
+    <div class="presence-section-heading compact-heading">
+      <h3>Resumen territorial</h3>
+      <p>Cobertura declarada: <strong>${escapeHtml(presenceType)}</strong></p>
+    </div>
+    <div class="territorial-grid">
+      <article><span>Ciudades donde está presente</span><strong>${escapeHtml(cities.join(', ') || 'Pendiente')}</strong></article>
+      <article><span>Provincias cubiertas</span><strong>${escapeHtml(provinces.join(', ') || 'Pendiente')}</strong></article>
+      <article><span>Cobertura declarada</span><strong>${escapeHtml(presenceType)}</strong></article>
+    </div>
+  `;
+}
+
+
+if (presenceSummaryGrid && locationsList && territorialSummary) {
+  renderPresenceCards('Empresa pendiente', 'Local', []);
 }
 
 companyMapForm?.addEventListener('submit', (event) => {
@@ -581,28 +442,9 @@ companyMapForm?.addEventListener('submit', (event) => {
     type: 'Sede',
     isMain: true,
   };
-  renderCompanyMap(companyName, presenceType, [hq, ...collectDelegations(formData)]);
-  showToast('Mapa empresarial actualizado.');
+  renderPresenceCards(companyName, presenceType, [hq, ...collectDelegations(formData)]);
+  showToast('Presencia empresarial actualizada.');
 });
-
-recalculateMapButton?.addEventListener('click', () => {
-  ensureBusinessMap();
-  refreshBusinessMarkers(lastResolvedMapLocations);
-  applyBusinessMapView(lastResolvedMapLocations);
-});
-
-window.addEventListener('resize', () => {
-  if (!businessMap) return;
-  applyBusinessMapView(lastResolvedMapLocations);
-});
-
-window.addEventListener('hashchange', () => {
-  if (window.location.hash === '#mapa-empresa') {
-    initializeBusinessMapWhenVisible();
-  }
-});
-
-initializeBusinessMapWhenVisible();
 
 
 function escapeHtml(value) {
@@ -719,9 +561,16 @@ function reviewReportSections() {
 function mapReportSections() {
   const data = currentMapFormData();
   const locations = data.locations || [];
+  const mainLocation = locations.find((location) => location.isMain);
+  const delegations = locations.filter((location) => !location.isMain);
+  const cities = uniqueValues(locations, 'city').join(', ') || 'Pendiente';
+  const provinces = uniqueValues(locations, 'province').join(', ') || 'Pendiente';
+  const locationCard = (location) => `<article><strong>${escapeHtml(location.isMain ? 'Sede principal' : location.type)} · ${escapeHtml(location.name)}</strong><p>${escapeHtml([location.address, location.city, location.province, location.postal, location.country].filter(Boolean).join(', ') || 'Ubicación no indicada')}</p></article>`;
   return [
-    section('Datos del mapa empresarial', definitionList([['Empresa o marca', data.companyName], ['Cobertura', data.presenceType], ['Número de ubicaciones', String(locations.length)]])),
-    section('Sede principal y delegaciones', `<div class="report-grid">${locations.map((location) => `<article><strong>${escapeHtml(location.isMain ? 'Sede principal' : location.type)} · ${escapeHtml(location.name)}</strong><p>${escapeHtml([location.address, location.city, location.province, location.postal, location.country].filter(Boolean).join(', ') || 'Ubicación no indicada')}</p></article>`).join('') || '<article><p>Añade ubicaciones para completar el listado.</p></article>'}</div>`),
+    section('Datos de presencia empresarial', definitionList([['Empresa o marca', data.companyName], ['Tipo de presencia', data.presenceType], ['Número de ubicaciones', String(locations.length)], ['Fecha', generatedDate()]])),
+    section('Sede principal', mainLocation ? `<div class="report-grid">${locationCard(mainLocation)}</div>` : '<p>Añade la sede principal para completar el informe.</p>'),
+    section('Delegaciones', `<div class="report-grid">${delegations.map(locationCard).join('') || '<article><p>Añade delegaciones para completar el listado.</p></article>'}</div>`),
+    section('Resumen territorial', definitionList([['Ciudades donde está presente', cities], ['Provincias cubiertas', provinces], ['Cobertura declarada', data.presenceType], ['Listado de ubicaciones', locations.map((location) => `${location.name} (${location.city || 'ciudad pendiente'})`).join(', ') || 'Pendiente']])),
     section('Recomendaciones', bulletList(['Mantener datos NAP coherentes en Google Business, web y redes.', 'Revisar reseñas y mensajes por sede cuando el negocio crezca.', 'Priorizar respuestas locales y evidencias específicas por ubicación.'])),
   ];
 }
@@ -736,10 +585,10 @@ function generalReportSections() {
   const review = dashboardState.review;
   const mapData = currentMapFormData();
   return [
-    section('Resumen ejecutivo', `<p>Informe general de reputación para ${escapeHtml(company)} con los datos actuales del dashboard: radiografía, reseña negativa, mapa empresarial y plan de mejora.</p>`),
+    section('Resumen ejecutivo', `<p>Informe general de reputación para ${escapeHtml(company)} con los datos actuales del dashboard: radiografía, reseña negativa, presencia empresarial y plan de mejora.</p>`),
     section('Radiografía Reputacional', radiographyReportSections().map((item) => item).join('')),
     section('Análisis de Reseñas Negativas', reviewReportSections().map((item) => item).join('')),
-    section('Mapa de Empresa / Delegaciones', mapReportSections().map((item) => item).join('')),
+    section('Presencia Empresarial / Delegaciones', mapReportSections().map((item) => item).join('')),
     section('Plan de Mejora Reputacional', improvementReportSections().map((item) => item).join('')),
     section('Conclusión final', bulletList([`Diagnóstico general: ${dashboardState.radiography ? 'existen oportunidades claras para reforzar confianza, coherencia y prueba social.' : 'genera la radiografía para completar el diagnóstico reputacional.'}`, review ? `Reseñas: viabilidad estimada ${review.viability}; revisar evidencias antes de reclamar.` : 'Reseñas: analiza una reseña concreta si necesitas preparar reclamación.', `Cobertura: ${mapData.presenceType || 'pendiente'} con ${mapData.locations?.length || 0} ubicaciones registradas.`, 'Próximos pasos: priorizar señales de confianza, datos locales y respuestas profesionales.'])),
   ];
@@ -750,7 +599,7 @@ function openReport(type) {
   const reports = {
     radiography: ['Informe de Radiografía Reputacional', radiographyReportSections()],
     review: ['Informe de Reseña Negativa', reviewReportSections()],
-    map: ['Informe de Mapa Empresarial', mapReportSections()],
+    map: ['Informe de Presencia Empresarial', mapReportSections()],
     improvement: ['Plan de Mejora Reputacional', improvementReportSections()],
     general: ['Informe General de Reputación', generalReportSections(), true],
   };
