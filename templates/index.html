@@ -29,9 +29,10 @@
     <section class="hero card">
       <div class="brand-identity">
         <img class="brand-logo" src="{{ url_for('static', path='logo-wave-music-business.png') }}" alt="Wave Music Business logo">
-        <p class="eyebrow">Google Reviews Policy Assistant</p>
+        <p class="eyebrow">Dashboard reputacional inteligente</p>
         <h1>Wave Reputation Manager</h1>
-        <p class="hero-copy">Analiza reseñas negativas, identifica indicios de infracción y genera una reclamación profesional lista para revisar y enviar.</p>
+        <p class="hero-copy"><strong>Tu centro de control para analizar, proteger y mejorar la reputación de tu marca.</strong></p>
+        <p class="hero-copy hero-subcopy">Analiza cómo te perciben tus clientes, detecta puntos débiles, revisa reseñas negativas y organiza la presencia de tu empresa desde un único panel profesional.</p>
       </div>
     </section>
 
@@ -60,7 +61,94 @@
     </section>
     {% endif %}
 
-    <div class="workspace">
+    <section class="dashboard-hub" aria-labelledby="dashboard-title">
+      <div class="section-heading centered-heading">
+        <span class="step">WR</span>
+        <div>
+          <h2 id="dashboard-title">Panel principal de análisis reputacional</h2>
+          <p>Elige el módulo que necesitas y trabaja sobre tu reputación de marca sin perder el acceso a las herramientas actuales.</p>
+        </div>
+      </div>
+      <div class="module-grid">
+        <article class="card module-card module-card-featured">
+          <span class="module-icon">◎</span>
+          <h3>Radiografía Reputacional</h3>
+          <p>Analiza la percepción de tu marca, detecta puntos fuertes, riesgos reputacionales y oportunidades de mejora.</p>
+          <a class="primary-button" href="#radiografia-reputacional">Iniciar radiografía</a>
+        </article>
+        <article class="card module-card">
+          <span class="module-icon">!</span>
+          <h3>Analizador de Reseñas Negativas</h3>
+          <p>Revisa reseñas negativas, detecta posibles incumplimientos y genera reclamaciones profesionales.</p>
+          <a class="secondary-button" href="#analizador-resenas-negativas">Analizar reseña</a>
+        </article>
+        <article class="card module-card">
+          <span class="module-icon">⌖</span>
+          <h3>Mapa de Empresa / Delegaciones</h3>
+          <p>Ubica tu sede principal y delegaciones en un mapa visual para organizar la presencia territorial de tu negocio.</p>
+          <a class="secondary-button" href="#mapa-empresa">Crear mapa empresarial</a>
+        </article>
+        <article class="card module-card">
+          <span class="module-icon">↗</span>
+          <h3>Plan de Mejora Reputacional</h3>
+          <p>Obtén acciones concretas para reforzar la confianza, imagen y reputación de tu empresa.</p>
+          <a class="secondary-button" href="#plan-mejora">Crear plan de mejora</a>
+        </article>
+        <article class="card module-card">
+          <span class="module-icon">▣</span>
+          <h3>Informes / Historial</h3>
+          <p>Consulta o descarga tus análisis reputacionales generados.</p>
+          <a class="secondary-button" href="#informes-historial">Ver informes</a>
+        </article>
+      </div>
+    </section>
+
+    <section class="reputation-module" id="radiografia-reputacional" aria-labelledby="radiografia-title">
+      <div class="section-heading">
+        <span class="step">01</span>
+        <div>
+          <h2 id="radiografia-title">Radiografía Reputacional</h2>
+          <p>Analiza la primera impresión de tu empresa, sus frenos de confianza y las oportunidades de mejora más visibles.</p>
+        </div>
+      </div>
+      <div class="module-workspace">
+        <article class="card form-card">
+          <form id="radiography-form" class="analysis-form">
+            <label>Nombre de la empresa o marca<input name="brand_name" type="text" placeholder="Ej. Clínica Wave Dental" required></label>
+            <div class="grid-two">
+              <label>Sector<input name="sector" type="text" placeholder="Ej. Salud, hostelería, formación" required></label>
+              <label>Qué vende u ofrece<input name="offer" type="text" placeholder="Ej. Tratamientos dentales premium" required></label>
+            </div>
+            <label>Público objetivo<input name="audience" type="text" placeholder="Ej. Familias, empresas locales, turistas" required></label>
+            <label>Qué quiere transmitir la marca<textarea name="brand_message" rows="3" placeholder="Ej. Cercanía, confianza, profesionalidad, resultados"></textarea></label>
+            <label>Qué cree el usuario que está fallando<textarea name="current_issue" rows="3" placeholder="Ej. Pocas reseñas recientes, web poco clara, dudas sobre precio"></textarea></label>
+            <label>Comentarios, reseñas o percepciones de clientes <span class="optional-label">opcional</span><textarea name="customer_feedback" rows="4" placeholder="Pega aquí comentarios frecuentes o percepciones que quieras analizar"></textarea></label>
+            <div class="grid-two">
+              <label>Web o redes sociales <span class="optional-label">opcional</span><input name="channels" type="text" placeholder="https://... / @usuario"></label>
+              <label>Ubicación principal <span class="optional-label">opcional</span><input name="location" type="text" placeholder="Ej. Madrid, España"></label>
+            </div>
+            <button class="primary-button" type="submit">Generar radiografía</button>
+          </form>
+        </article>
+        <article class="card result-card reputation-result" id="radiography-result" hidden>
+          <div class="result-header">
+            <span class="mini-pill media">Informe estructurado</span>
+            <h3 id="radiography-brand-name">Resultado reputacional</h3>
+          </div>
+          <div class="insight-grid" id="radiography-insights"></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="reputation-module" id="analizador-resenas-negativas" aria-labelledby="reviews-title">
+      <div class="section-heading">
+        <span class="step">02</span>
+        <div>
+          <h2 id="reviews-title">Analizador de Reseñas Negativas</h2>
+          <p>Sección independiente con el flujo actual de análisis, detección de posibles incumplimientos y generación de reclamaciones profesionales.</p>
+        </div>
+      </div>
+      <div class="workspace">
       <section class="card form-card">
         <div class="section-heading">
           <span class="step">01</span>
@@ -158,13 +246,90 @@
         </div>
       </section>
     </div>
+    </section>
 
-    <section class="card history-card">
+    <section class="reputation-module" id="mapa-empresa" aria-labelledby="map-title">
       <div class="section-heading">
         <span class="step">03</span>
         <div>
-          <h2>Historial de reclamaciones</h2>
-          <p>{% if user %}Últimos análisis guardados en SQLite para tu cuenta.{% else %}Inicia sesión para consultar tu historial asociado.{% endif %}</p>
+          <h2 id="map-title">Mapa de Empresa / Delegaciones</h2>
+          <p>Organiza tu sede principal y delegaciones en una vista territorial sencilla, preparada para añadir métricas reputacionales por ubicación más adelante.</p>
+        </div>
+      </div>
+      <div class="module-workspace map-workspace">
+        <article class="card form-card">
+          <form id="company-map-form" class="analysis-form">
+            <div class="grid-two">
+              <label>Nombre de la empresa<input name="company_name" type="text" placeholder="Ej. Wave Clinics" required></label>
+              <label>Tipo de presencia
+                <select name="presence_type" required>
+                  <option value="Local">Local</option>
+                  <option value="Regional">Regional</option>
+                  <option value="Nacional">Nacional</option>
+                </select>
+              </label>
+            </div>
+            <div class="fieldset-card">
+              <h3>Sede principal</h3>
+              <label>Nombre de la sede<input name="hq_name" type="text" placeholder="Ej. Sede central" required></label>
+              <label>Dirección<input name="hq_address" type="text" placeholder="Calle, número" required></label>
+              <div class="grid-two">
+                <label>Ciudad<input name="hq_city" type="text" required></label>
+                <label>Provincia<input name="hq_province" type="text" required></label>
+              </div>
+              <div class="grid-two">
+                <label>Código postal <span class="optional-label">opcional</span><input name="hq_postal" type="text"></label>
+                <label>País<input name="hq_country" type="text" value="España" required></label>
+              </div>
+            </div>
+            <div class="delegation-builder">
+              <div class="delegation-header">
+                <h3>Delegaciones</h3>
+                <button class="secondary-button compact-button" id="add-delegation" type="button">+ Añadir delegación</button>
+              </div>
+              <div id="delegations-container" class="delegations-container"></div>
+            </div>
+            <button class="primary-button" type="submit">Crear mapa empresarial</button>
+          </form>
+        </article>
+        <article class="card result-card company-map-card">
+          <div class="coverage-pill" id="coverage-pill">Cobertura pendiente</div>
+          <div class="simple-map" id="company-map" aria-label="Mapa visual de sedes y delegaciones">
+            <div class="map-grid-lines"></div>
+            <p>Añade tu sede principal y delegaciones para visualizar tu presencia territorial.</p>
+          </div>
+          <div class="locations-list" id="locations-list"></div>
+          <div class="future-note">Fase futura: reputación por sede, reseñas negativas, incidencias detectadas, recomendaciones y estado reputacional por ubicación.</div>
+        </article>
+      </div>
+    </section>
+
+    <section class="reputation-module" id="plan-mejora" aria-labelledby="plan-title">
+      <div class="section-heading">
+        <span class="step">04</span>
+        <div>
+          <h2 id="plan-title">Plan de Mejora Reputacional</h2>
+          <p>Acciones iniciales para mejorar confianza, imagen y conversión. Puedes generarlo desde los datos de la radiografía o usar esta base preparada.</p>
+        </div>
+      </div>
+      <div class="card improvement-card">
+        <div class="improvement-grid" id="improvement-grid">
+          <article><strong>Google Business</strong><p>Actualizar horarios, servicios, fotos reales, respuestas a reseñas y señales de confianza.</p></article>
+          <article><strong>Web</strong><p>Clarificar propuesta de valor, pruebas sociales, garantías, contacto visible y llamadas a la acción.</p></article>
+          <article><strong>Redes sociales</strong><p>Reforzar coherencia visual, casos reales, testimonios y contenido que reduzca dudas.</p></article>
+          <article><strong>Comunicación</strong><p>Unificar tono, explicar procesos, anticipar objeciones y evitar promesas ambiguas.</p></article>
+          <article><strong>Reseñas reales</strong><p>Incentivar feedback honesto después de experiencias verificables, sin manipular valoraciones.</p></article>
+          <article><strong>Primeros pasos</strong><p>Priorizar los frenos más visibles, responder incidencias y medir avances por ubicación.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="card history-card" id="informes-historial">
+      <div class="section-heading">
+        <span class="step">05</span>
+        <div>
+          <h2>Informes / Historial</h2>
+          <p>{% if user %}Últimas reclamaciones guardadas para tu cuenta. Próximamente podrás consultar aquí todos tus informes reputacionales generados.{% else %}Inicia sesión para consultar tu historial asociado. Próximamente podrás consultar aquí tus informes reputacionales generados.{% endif %}</p>
         </div>
       </div>
       <div class="history-table-wrap">
