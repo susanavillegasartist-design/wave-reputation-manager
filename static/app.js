@@ -15,6 +15,15 @@ const historyBody = document.querySelector('#history-body');
 const toast = document.querySelector('#toast');
 const usageUsed = document.querySelector('#usage-used');
 const usageLimit = document.querySelector('#usage-limit');
+const reportButtons = [...document.querySelectorAll('[data-report]')];
+
+const dashboardState = {
+  radiography: null,
+  radiographyInsights: [],
+  review: null,
+  map: null,
+  improvementPlan: [],
+};
 
 const loadingMessages = ['Analizando reseña…', 'Consultando políticas…', 'Generando reclamación…'];
 let loadingTimer;
@@ -95,6 +104,7 @@ function renderResult(data) {
 
   claimText.value = data.claim_text;
   pdfLink.href = `/claims/${data.id}/pdf`;
+  dashboardState.review = data;
   resultCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -191,10 +201,13 @@ const radiographyInsights = document.querySelector('#radiography-insights');
 const companyMapForm = document.querySelector('#company-map-form');
 const addDelegationButton = document.querySelector('#add-delegation');
 const delegationsContainer = document.querySelector('#delegations-container');
-const companyMap = document.querySelector('#company-map');
+const businessMapElement = document.querySelector('#business-map');
+const mapWarning = document.querySelector('#map-warning');
 const locationsList = document.querySelector('#locations-list');
 const coveragePill = document.querySelector('#coverage-pill');
 const improvementGrid = document.querySelector('#improvement-grid');
+let businessMap;
+let businessMarkersLayer;
 
 function formValue(formData, key, fallback = '') {
   return String(formData.get(key) || fallback).trim();
@@ -246,6 +259,7 @@ function renderImprovementPlan(data) {
     ['Primeros pasos', 'Prioridad alta: confianza básica. Prioridad media: coherencia visual. Prioridad baja: optimizaciones de conversión una vez corregidos los frenos principales.'],
   ];
   improvementGrid.replaceChildren();
+  dashboardState.improvementPlan = cards.map(([title, text]) => ({ title, text }));
   cards.forEach(([title, text]) => {
     const article = document.createElement('article');
     const strong = document.createElement('strong');
@@ -272,9 +286,12 @@ radiographyForm?.addEventListener('submit', (event) => {
     location: formValue(formData, 'location'),
   };
 
+  const insights = buildRadiographyInsights(data);
+  dashboardState.radiography = data;
+  dashboardState.radiographyInsights = insights.map(([title, text, priority]) => ({ title, text, priority }));
   radiographyBrandName.textContent = `Radiografía de ${data.brandName}`;
   radiographyInsights.replaceChildren();
-  buildRadiographyInsights(data).forEach(([title, text, priority]) => {
+  insights.forEach(([title, text, priority]) => {
     radiographyInsights.appendChild(insightCard(title, text, priority));
   });
   renderImprovementPlan(data);
@@ -336,26 +353,95 @@ function collectDelegations(formData) {
   });
 }
 
+const CITY_COORDINATES = {
+  'a coruña': [43.3623, -8.4115], albacete: [38.9943, -1.8585], alicante: [38.3452, -0.4810], almeria: [36.8340, -2.4637],
+  avila: [40.6565, -4.6818], badajoz: [38.8794, -6.9707], barcelona: [41.3874, 2.1686], bilbao: [43.2630, -2.9350],
+  burgos: [42.3439, -3.6969], caceres: [39.4753, -6.3724], cadiz: [36.5271, -6.2886], castellon: [39.9864, -0.0513],
+  'ciudad real': [38.9848, -3.9274], cordoba: [37.8882, -4.7794], cuenca: [40.0704, -2.1374], girona: [41.9794, 2.8214],
+  granada: [37.1773, -3.5986], guadalajara: [40.6325, -3.1602], huelva: [37.2614, -6.9447], huesca: [42.1401, -0.4089],
+  jaen: [37.7796, -3.7849], leon: [42.5987, -5.5671], lleida: [41.6176, 0.6200], logrono: [42.4627, -2.4449],
+  madrid: [40.4168, -3.7038], malaga: [36.7213, -4.4214], murcia: [37.9922, -1.1307], oviedo: [43.3619, -5.8494],
+  palencia: [42.0097, -4.5288], palma: [39.5696, 2.6502], pamplona: [42.8125, -1.6458], pontevedra: [42.4299, -8.6446],
+  salamanca: [40.9701, -5.6635], 'san sebastian': [43.3183, -1.9812], santander: [43.4623, -3.8099], segovia: [40.9429, -4.1088],
+  sevilla: [37.3891, -5.9845], soria: [41.7666, -2.4790], tarragona: [41.1189, 1.2445], teruel: [40.3457, -1.1065],
+  toledo: [39.8628, -4.0273], valencia: [39.4699, -0.3763], valladolid: [41.6523, -4.7245], vigo: [42.2406, -8.7207],
+  vitoria: [42.8467, -2.6716], zamora: [41.5035, -5.7446], zaragoza: [41.6488, -0.8891], ceuta: [35.8894, -5.3213], melilla: [35.2923, -2.9381],
+};
+
+function normalizeCity(value) {
+  return String(value || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function resolveCoordinates(location) {
+  const key = normalizeCity(location.city || location.province);
+  if (CITY_COORDINATES[key]) return { latLng: CITY_COORDINATES[key], approximated: true, fallback: false };
+  return { latLng: [40.4168, -3.7038], approximated: true, fallback: true };
+}
+
+function ensureBusinessMap() {
+  if (!businessMapElement || !window.L) return null;
+  if (!businessMap) {
+    businessMap = L.map(businessMapElement, { scrollWheelZoom: true }).setView([40.4168, -3.7038], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors',
+    }).addTo(businessMap);
+    businessMarkersLayer = L.layerGroup().addTo(businessMap);
+    window.setTimeout(() => businessMap.invalidateSize(), 120);
+  }
+  return businessMap;
+}
+
+function markerPopup(location) {
+  const rows = [
+    ['Nombre', location.name],
+    ['Tipo', location.isMain ? 'Sede principal' : location.type],
+    ['Dirección', location.address],
+    ['Ciudad', location.city],
+    ['Provincia', location.province],
+    ['País', location.country],
+  ];
+  return `<div class="leaflet-popup-card"><strong>${escapeHtml(location.name)}</strong>${rows.map(([label, value]) => `<span><b>${label}:</b> ${escapeHtml(value || 'No indicado')}</span>`).join('')}</div>`;
+}
+
+function initializeEmptyBusinessMap() {
+  const map = ensureBusinessMap();
+  if (!map && businessMapElement) {
+    businessMapElement.textContent = 'No se ha podido cargar Leaflet. Revisa la conexión y recarga el dashboard.';
+  }
+}
+
 function renderCompanyMap(companyName, presenceType, locations) {
   coveragePill.textContent = `${companyName} · Cobertura ${presenceType}`;
-  companyMap.replaceChildren();
-  const gridLines = document.createElement('div');
-  gridLines.className = 'map-grid-lines';
-  companyMap.appendChild(gridLines);
-  locations.forEach((location, index) => {
-    const marker = document.createElement('button');
-    marker.type = 'button';
-    marker.className = `map-marker ${location.isMain ? 'is-main' : ''}`;
-    marker.style.left = `${18 + ((index * 23) % 68)}%`;
-    marker.style.top = `${24 + ((index * 17) % 54)}%`;
-    marker.textContent = location.isMain ? '★' : String(index);
-    marker.setAttribute('aria-label', `${location.name}, ${location.city}`);
-    marker.title = `${location.name} · ${location.city}`;
-    companyMap.appendChild(marker);
+  const map = ensureBusinessMap();
+  const resolvedLocations = locations.map((location) => {
+    const resolved = resolveCoordinates(location);
+    return { ...location, coordinates: resolved.latLng, approximated: resolved.approximated, fallback: resolved.fallback };
   });
+  dashboardState.map = { companyName, presenceType, locations: resolvedLocations };
+
+  if (map && businessMarkersLayer) {
+    businessMarkersLayer.clearLayers();
+    const bounds = [];
+    resolvedLocations.forEach((location) => {
+      const marker = L.marker(location.coordinates, { title: `${location.name} · ${location.city}` })
+        .bindPopup(markerPopup(location));
+      marker.addTo(businessMarkersLayer);
+      bounds.push(location.coordinates);
+    });
+    if (bounds.length > 1) map.fitBounds(bounds, { padding: [34, 34], maxZoom: 12 });
+    if (bounds.length === 1) map.setView(bounds[0], 12);
+    window.setTimeout(() => map.invalidateSize(), 120);
+  }
+
+  const fallbackLocations = resolvedLocations.filter((location) => location.fallback);
+  mapWarning.hidden = fallbackLocations.length === 0;
+  mapWarning.textContent = fallbackLocations.length
+    ? `Ubicación aproximada: no se encontró ${fallbackLocations.map((location) => location.city || location.name).join(', ')}. Se ha usado Madrid como referencia por defecto.`
+    : '';
 
   locationsList.replaceChildren();
-  locations.forEach((location) => {
+  resolvedLocations.forEach((location) => {
     const item = document.createElement('article');
     item.className = `location-item ${location.isMain ? 'is-main' : ''}`;
     const name = document.createElement('strong');
@@ -386,4 +472,171 @@ companyMapForm?.addEventListener('submit', (event) => {
   };
   renderCompanyMap(companyName, presenceType, [hq, ...collectDelegations(formData)]);
   showToast('Mapa empresarial actualizado.');
+});
+
+initializeEmptyBusinessMap();
+
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"]/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+  }[char]));
+}
+
+function generatedDate() {
+  return new Intl.DateTimeFormat('es-ES', { dateStyle: 'long', timeStyle: 'short' }).format(new Date());
+}
+
+function currentCompanyName() {
+  return dashboardState.radiography?.brandName
+    || dashboardState.map?.companyName
+    || formValue(new FormData(form), 'business_name')
+    || 'Empresa o marca no indicada';
+}
+
+function currentReviewFormData() {
+  const formData = new FormData(form);
+  return {
+    businessName: formValue(formData, 'business_name'),
+    reviewText: formValue(formData, 'review_text'),
+    stars: formValue(formData, 'stars'),
+    reviewDate: formValue(formData, 'review_date'),
+    reviewerName: formValue(formData, 'reviewer_name'),
+    additionalContext: formValue(formData, 'additional_context'),
+  };
+}
+
+function currentMapFormData() {
+  if (dashboardState.map) return dashboardState.map;
+  const formData = new FormData(companyMapForm);
+  const hq = {
+    name: formValue(formData, 'hq_name', 'Sede principal'),
+    address: formValue(formData, 'hq_address'),
+    city: formValue(formData, 'hq_city'),
+    province: formValue(formData, 'hq_province'),
+    postal: formValue(formData, 'hq_postal'),
+    country: formValue(formData, 'hq_country', 'España'),
+    type: 'Sede',
+    isMain: true,
+  };
+  return {
+    companyName: formValue(formData, 'company_name', currentCompanyName()),
+    presenceType: formValue(formData, 'presence_type', 'Local'),
+    locations: [hq, ...collectDelegations(formData)].filter((location) => location.name || location.city || location.address),
+  };
+}
+
+function currentImprovementPlan() {
+  if (dashboardState.improvementPlan.length) return dashboardState.improvementPlan;
+  return [...improvementGrid.querySelectorAll('article')].map((article) => ({
+    title: article.querySelector('strong')?.textContent || 'Acción',
+    text: article.querySelector('p')?.textContent || article.textContent.trim(),
+  }));
+}
+
+function section(title, content) {
+  return `<section class="report-section"><h2>${escapeHtml(title)}</h2>${content}</section>`;
+}
+
+function definitionList(items) {
+  return `<div class="report-grid">${items.map(([label, value]) => `<article><strong>${escapeHtml(label)}</strong><p>${escapeHtml(value || 'No indicado')}</p></article>`).join('')}</div>`;
+}
+
+function bulletList(items) {
+  const safeItems = items.length ? items : ['Sin datos generados todavía en este bloque.'];
+  return `<ul>${safeItems.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
+}
+
+function reportShell(title, companyName, sections, isGeneral = false) {
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>
+    :root { --blue: #00a3ff; --purple: #7d5cff; --ink: #101525; --muted: #5d6680; --line: #dce4f5; }
+    * { box-sizing: border-box; } body { margin: 0; background: #eef3fb; color: var(--ink); font-family: Inter, Arial, sans-serif; }
+    .report { max-width: 980px; margin: 0 auto; padding: 36px; } .cover, .report-section { background: #fff; border: 1px solid var(--line); border-radius: 24px; box-shadow: 0 18px 60px rgba(25, 39, 80, .10); margin-bottom: 18px; padding: 30px; }
+    .cover { background: linear-gradient(135deg, rgba(0,163,255,.12), rgba(125,92,255,.12)), #fff; min-height: ${isGeneral ? '360px' : '220px'}; display: grid; align-content: center; }
+    .eyebrow { color: var(--blue); font-weight: 900; letter-spacing: .13em; text-transform: uppercase; } h1 { font-size: 2.45rem; line-height: 1; margin: 8px 0 14px; } h2 { border-bottom: 2px solid rgba(0,163,255,.18); padding-bottom: 10px; } h3 { color: var(--purple); }
+    .meta { color: var(--muted); line-height: 1.7; } .report-grid { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); } article { border: 1px solid var(--line); border-radius: 16px; padding: 14px; background: #f8faff; } article strong { color: var(--ink); } p, li { color: var(--muted); line-height: 1.65; } ul { padding-left: 20px; } .footer { color: var(--muted); font-size: .9rem; text-align: center; }
+    @media print { body { background: #fff; } .report { padding: 0; } .cover, .report-section { box-shadow: none; break-inside: avoid; } .no-print { display: none; } }
+  </style></head><body><main class="report"><button class="no-print" onclick="window.print()">Imprimir / Guardar como PDF</button><div class="cover"><p class="eyebrow">Wave Reputation Manager</p><h1>${escapeHtml(title)}</h1><p class="meta"><strong>${escapeHtml(companyName)}</strong><br>Fecha de generación: ${escapeHtml(generatedDate())}<br>Wave Music Business / Wave Music Tools</p></div>${sections.join('')}<p class="footer">Wave Reputation Manager · Wave Music Business / Wave Music Tools<br>Informe orientativo generado como apoyo estratégico, no garantiza retirada de reseñas ni sustituye asesoramiento legal.</p></main><script>window.addEventListener('load', () => setTimeout(() => window.print(), 250));<\/script></body></html>`;
+}
+
+function radiographyReportSections() {
+  const data = dashboardState.radiography;
+  const intro = data ? definitionList([
+    ['Empresa o marca', data.brandName], ['Sector', data.sector], ['Oferta', data.offer], ['Público objetivo', data.audience],
+    ['Mensaje de marca', data.brandMessage], ['Problema percibido', data.currentIssue], ['Canales', data.channels], ['Ubicación', data.location],
+  ]) : '<p>No se ha generado todavía la radiografía. El informe se prepara con los datos actuales disponibles.</p>';
+  const insights = dashboardState.radiographyInsights.map((item) => `<article><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.text)}</p></article>`).join('');
+  return [section('Datos introducidos', intro), section('Resultado generado y recomendaciones', `<div class="report-grid">${insights || '<article><p>Genera la radiografía para completar este bloque.</p></article>'}</div>`)];
+}
+
+function reviewReportSections() {
+  const input = currentReviewFormData();
+  const result = dashboardState.review;
+  return [
+    section('Datos introducidos por el usuario', definitionList([
+      ['Negocio', input.businessName], ['Reseña analizada', input.reviewText], ['Estrellas', input.stars], ['Fecha de reseña', input.reviewDate], ['Usuario visible', input.reviewerName], ['Contexto adicional', input.additionalContext],
+    ])),
+    section('Resultado generado', result ? definitionList([
+      ['Viabilidad estimada', result.viability],
+      ['Posibles incumplimientos', result.detected_motives.map((motive) => `${motive.category}: ${motive.reason}`).join('\n')],
+      ['Reclamación generada', result.claim_text],
+    ]) : '<p>Analiza una reseña para completar viabilidad, posibles incumplimientos y reclamación generada.</p>'),
+    section('Advertencias y recomendaciones', bulletList(result?.recommended_evidence || ['Aporta evidencias objetivas antes de reclamar y revisa las políticas oficiales vigentes.'])),
+  ];
+}
+
+function mapReportSections() {
+  const data = currentMapFormData();
+  const locations = data.locations || [];
+  return [
+    section('Datos del mapa empresarial', definitionList([['Empresa o marca', data.companyName], ['Cobertura', data.presenceType], ['Número de ubicaciones', String(locations.length)]])),
+    section('Sede principal y delegaciones', `<div class="report-grid">${locations.map((location) => `<article><strong>${escapeHtml(location.isMain ? 'Sede principal' : location.type)} · ${escapeHtml(location.name)}</strong><p>${escapeHtml([location.address, location.city, location.province, location.postal, location.country].filter(Boolean).join(', ') || 'Ubicación no indicada')}</p></article>`).join('') || '<article><p>Añade ubicaciones para completar el listado.</p></article>'}</div>`),
+    section('Recomendaciones', bulletList(['Mantener datos NAP coherentes en Google Business, web y redes.', 'Revisar reseñas y mensajes por sede cuando el negocio crezca.', 'Priorizar respuestas locales y evidencias específicas por ubicación.'])),
+  ];
+}
+
+function improvementReportSections() {
+  const plan = currentImprovementPlan();
+  return [section('Plan de Mejora Reputacional', `<div class="report-grid">${plan.map((item) => `<article><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.text)}</p></article>`).join('')}</div>`), section('Errores a evitar', bulletList(['Prometer la retirada garantizada de reseñas.', 'Usar reseñas falsas o incentivos condicionados.', 'Responder de forma impulsiva o poco verificable.', 'Cambiar precios, planes o accesos al margen de la estrategia reputacional.']))];
+}
+
+function generalReportSections() {
+  const company = currentCompanyName();
+  const review = dashboardState.review;
+  const mapData = currentMapFormData();
+  return [
+    section('Resumen ejecutivo', `<p>Informe general de reputación para ${escapeHtml(company)} con los datos actuales del dashboard: radiografía, reseña negativa, mapa empresarial y plan de mejora.</p>`),
+    section('Radiografía Reputacional', radiographyReportSections().map((item) => item).join('')),
+    section('Análisis de Reseñas Negativas', reviewReportSections().map((item) => item).join('')),
+    section('Mapa de Empresa / Delegaciones', mapReportSections().map((item) => item).join('')),
+    section('Plan de Mejora Reputacional', improvementReportSections().map((item) => item).join('')),
+    section('Conclusión final', bulletList([`Diagnóstico general: ${dashboardState.radiography ? 'existen oportunidades claras para reforzar confianza, coherencia y prueba social.' : 'genera la radiografía para completar el diagnóstico reputacional.'}`, review ? `Reseñas: viabilidad estimada ${review.viability}; revisar evidencias antes de reclamar.` : 'Reseñas: analiza una reseña concreta si necesitas preparar reclamación.', `Cobertura: ${mapData.presenceType || 'pendiente'} con ${mapData.locations?.length || 0} ubicaciones registradas.`, 'Próximos pasos: priorizar señales de confianza, datos locales y respuestas profesionales.'])),
+  ];
+}
+
+function openReport(type) {
+  const company = currentCompanyName();
+  const reports = {
+    radiography: ['Informe de Radiografía Reputacional', radiographyReportSections()],
+    review: ['Informe de Reseña Negativa', reviewReportSections()],
+    map: ['Informe de Mapa Empresarial', mapReportSections()],
+    improvement: ['Plan de Mejora Reputacional', improvementReportSections()],
+    general: ['Informe General de Reputación', generalReportSections(), true],
+  };
+  const [title, sections, isGeneral] = reports[type] || reports.general;
+  const reportWindow = window.open('', '_blank');
+  if (!reportWindow) {
+    showToast('Activa las ventanas emergentes para imprimir o guardar el informe como PDF.', true);
+    return;
+  }
+  reportWindow.document.open();
+  reportWindow.document.write(reportShell(title, company, sections, isGeneral));
+  reportWindow.document.close();
+}
+
+reportButtons.forEach((reportButton) => {
+  reportButton.addEventListener('click', () => openReport(reportButton.dataset.report));
 });
