@@ -7,7 +7,6 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIINfQ72X1t27YHkzH7fTN2C1qH5XfP3H6M=" crossorigin="">
   <link rel="stylesheet" href="{{ url_for('static', path='styles.css') }}">
 </head>
 <body>
@@ -88,9 +87,9 @@
         </article>
         <article class="card module-card">
           <span class="module-icon">⌖</span>
-          <h3>Mapa de Empresa / Delegaciones</h3>
-          <p>Ubica tu sede principal y delegaciones en un mapa visual para organizar la presencia territorial de tu negocio.</p>
-          <a class="secondary-button" href="#mapa-empresa">Crear mapa empresarial</a>
+          <h3>Presencia Empresarial / Delegaciones</h3>
+          <p>Organiza tu sede principal y delegaciones en tarjetas profesionales para visualizar la presencia territorial de tu negocio.</p>
+          <a class="secondary-button" href="#mapa-empresa">Crear presencia empresarial</a>
         </article>
         <article class="card module-card">
           <span class="module-icon">↗</span>
@@ -262,8 +261,8 @@
       <div class="section-heading">
         <span class="step">03</span>
         <div>
-          <h2 id="map-title">Mapa de Empresa / Delegaciones</h2>
-          <p>Organiza tu sede principal y delegaciones en una vista territorial sencilla, preparada para añadir métricas reputacionales por ubicación más adelante.</p>
+          <h2 id="map-title">Presencia Empresarial / Delegaciones</h2>
+          <p>Organiza tu sede principal y delegaciones en una vista territorial premium con tarjetas claras, sin mapa interactivo temporalmente.</p>
         </div>
       </div>
       <div class="module-workspace map-workspace">
@@ -299,23 +298,19 @@
               </div>
               <div id="delegations-container" class="delegations-container"></div>
             </div>
-            <button class="primary-button" type="submit">Crear mapa empresarial</button>
-            <button class="secondary-button" type="button" data-report="map">Descargar informe de mapa empresarial</button>
+            <button class="primary-button" type="submit">Crear presencia empresarial</button>
+            <button class="secondary-button" type="button" data-report="map">Descargar informe de presencia empresarial</button>
           </form>
         </article>
-        <article class="card result-card company-map-card">
+        <article class="card result-card company-map-card presence-panel">
           <div class="coverage-pill" id="coverage-pill">Cobertura pendiente</div>
-          <div class="map-warning" id="map-warning" hidden></div>
-          <div class="map-showcase" aria-label="Mapa real de sedes y delegaciones">
-            <div class="map-shell">
-              <div id="business-map" aria-label="Mapa general interactivo de sedes y delegaciones"></div>
-            </div>
+          <div class="presence-summary-grid" id="presence-summary-grid" aria-label="Resumen de presencia empresarial"></div>
+          <div class="presence-section-heading">
+            <h3>Ubicaciones registradas</h3>
+            <p>Sede principal y delegaciones adicionales en formato de tarjetas profesionales.</p>
           </div>
-          <div class="map-actions">
-            <button class="secondary-button compact-button" id="recalculate-map" type="button">Recalcular mapa</button>
-          </div>
-          <div class="map-helper-text">Mapa real de Leaflet + OpenStreetMap. Si cambias de sección o redimensionas la ventana, usa “Recalcular mapa” para reajustar la vista.</div>
-          <div class="locations-list" id="locations-list"></div>
+          <div class="locations-list presence-cards" id="locations-list"></div>
+          <div class="territorial-summary" id="territorial-summary" aria-label="Resumen territorial"></div>
           <div class="future-note">Fase futura: reputación por sede, reseñas negativas, incidencias detectadas, recomendaciones y estado reputacional por ubicación.</div>
         </article>
       </div>
@@ -443,7 +438,6 @@
   </main>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="{{ url_for('static', path='app.js') }}"></script>
 </body>
 </html>
