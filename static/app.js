@@ -202,16 +202,14 @@ const companyMapForm = document.querySelector('#company-map-form');
 const addDelegationButton = document.querySelector('#add-delegation');
 const delegationsContainer = document.querySelector('#delegations-container');
 const businessMapElement = document.querySelector('#business-map');
-const businessMapInsetElement = document.querySelector('#business-map-inset');
-const mapInsetTitle = document.querySelector('#map-inset-title');
+const recalculateMapButton = document.querySelector('#recalculate-map');
 const mapWarning = document.querySelector('#map-warning');
 const locationsList = document.querySelector('#locations-list');
 const coveragePill = document.querySelector('#coverage-pill');
 const improvementGrid = document.querySelector('#improvement-grid');
 let businessMap;
-let businessInsetMap;
 let businessMarkersLayer;
-let businessInsetMarkersLayer;
+let lastResolvedMapLocations = [];
 
 function formValue(formData, key, fallback = '') {
   return String(formData.get(key) || fallback).trim();
@@ -382,6 +380,12 @@ function resolveCoordinates(location) {
   return { latLng: [40.4168, -3.7038], approximated: true, fallback: true };
 }
 
+function isBusinessMapVisible() {
+  if (!businessMapElement) return false;
+  const rect = businessMapElement.getBoundingClientRect();
+  return rect.width > 0 && rect.height > 0 && window.getComputedStyle(businessMapElement).display !== 'none';
+}
+
 function addOpenStreetMapLayer(map) {
   return L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
@@ -389,39 +393,94 @@ function addOpenStreetMapLayer(map) {
   }).addTo(map);
 }
 
+function safeInvalidateBusinessMap() {
+  if (!businessMap) return;
+
+  setTimeout(() => {
+    if (businessMap) {
+      businessMap.invalidateSize(true);
+    }
+  }, 100);
+
+  setTimeout(() => {
+    if (businessMap) {
+      businessMap.invalidateSize(true);
+    }
+  }, 350);
+
+  requestAnimationFrame(() => {
+    if (businessMap) {
+      businessMap.invalidateSize(true);
+    }
+  });
+}
+
+function applyBusinessMapView(locations = lastResolvedMapLocations) {
+  if (!businessMap) return;
+  const validLocations = locations.filter((location) => Array.isArray(location.coordinates) && location.coordinates.length === 2);
+
+  if (validLocations.length === 1) {
+    businessMap.setView(validLocations[0].coordinates, 13);
+  } else if (validLocations.length > 1) {
+    businessMap.fitBounds(validLocations.map((location) => location.coordinates), { padding: [40, 40] });
+  } else {
+    businessMap.setView([40.4168, -3.7038], 6);
+  }
+
+  safeInvalidateBusinessMap();
+}
+
 function ensureBusinessMap() {
-  if (!businessMapElement || !window.L) return null;
+  if (!businessMapElement || !window.L || !isBusinessMapVisible()) return null;
+
   if (!businessMap) {
     businessMap = L.map(businessMapElement, {
       scrollWheelZoom: false,
       zoomControl: true,
       attributionControl: true,
-    }).setView([40.4168, -3.7038], 5);
+    }).setView([40.4168, -3.7038], 6);
     addOpenStreetMapLayer(businessMap);
     businessMarkersLayer = L.layerGroup().addTo(businessMap);
-    window.setTimeout(() => businessMap.invalidateSize(), 120);
   }
+
+  if (!businessMarkersLayer) {
+    businessMarkersLayer = L.layerGroup().addTo(businessMap);
+  }
+
+  safeInvalidateBusinessMap();
   return businessMap;
 }
 
-function ensureBusinessInsetMap() {
-  if (!businessMapInsetElement || !window.L) return null;
-  if (!businessInsetMap) {
-    businessInsetMap = L.map(businessMapInsetElement, {
-      scrollWheelZoom: false,
-      zoomControl: false,
-      attributionControl: false,
-      dragging: false,
-      doubleClickZoom: false,
-      boxZoom: false,
-      keyboard: false,
-      tap: false,
-    }).setView([40.4168, -3.7038], 13);
-    addOpenStreetMapLayer(businessInsetMap);
-    businessInsetMarkersLayer = L.layerGroup().addTo(businessInsetMap);
-    window.setTimeout(() => businessInsetMap.invalidateSize(), 140);
+function initializeBusinessMapWhenVisible() {
+  if (ensureBusinessMap()) {
+    if (lastResolvedMapLocations.length) {
+      refreshBusinessMarkers(lastResolvedMapLocations);
+    } else {
+      applyBusinessMapView();
+    }
+    return;
   }
-  return businessInsetMap;
+
+  if (!businessMapElement || !window.L) {
+    if (businessMapElement) {
+      businessMapElement.textContent = 'No se ha podido cargar Leaflet. Revisa la conexión y recarga el dashboard.';
+    }
+    return;
+  }
+
+  if ('IntersectionObserver' in window) {
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      observer.disconnect();
+      if (!ensureBusinessMap()) return;
+      if (lastResolvedMapLocations.length) {
+        refreshBusinessMarkers(lastResolvedMapLocations);
+      } else {
+        applyBusinessMapView();
+      }
+    }, { threshold: 0.1 });
+    observer.observe(businessMapElement);
+  }
 }
 
 function markerPopup(location) {
@@ -436,16 +495,19 @@ function markerPopup(location) {
   return `<div class="leaflet-popup-card"><strong>${escapeHtml(location.name)}</strong>${rows.map(([label, value]) => `<span><b>${label}:</b> ${escapeHtml(value || 'No indicado')}</span>`).join('')}</div>`;
 }
 
-function focusBusinessInset(location) {
-  const insetMap = ensureBusinessInsetMap();
-  if (!insetMap || !businessInsetMarkersLayer || !location) return;
-  businessInsetMarkersLayer.clearLayers();
-  L.marker(location.coordinates, { title: `${location.name} · ${location.city}` })
-    .bindPopup(markerPopup(location))
-    .addTo(businessInsetMarkersLayer);
-  insetMap.setView(location.coordinates, location.fallback ? 11 : 14, { animate: true });
-  if (mapInsetTitle) mapInsetTitle.textContent = location.name || 'Ubicación seleccionada';
-  window.setTimeout(() => insetMap.invalidateSize(), 120);
+function refreshBusinessMarkers(locations) {
+  const map = ensureBusinessMap();
+  if (!map || !businessMarkersLayer) return;
+
+  businessMarkersLayer.clearLayers();
+  locations.forEach((location, index) => {
+    L.marker(location.coordinates, { title: `${location.name} · ${location.city}` })
+      .bindPopup(markerPopup(location))
+      .on('click', () => setSelectedLocationItem(index))
+      .addTo(businessMarkersLayer);
+  });
+
+  applyBusinessMapView(locations);
 }
 
 function setSelectedLocationItem(selectedIndex) {
@@ -454,45 +516,15 @@ function setSelectedLocationItem(selectedIndex) {
   });
 }
 
-function initializeEmptyBusinessMap() {
-  const map = ensureBusinessMap();
-  const insetMap = ensureBusinessInsetMap();
-  if (!map && businessMapElement) {
-    businessMapElement.textContent = 'No se ha podido cargar Leaflet. Revisa la conexión y recarga el dashboard.';
-  }
-  if (!insetMap && businessMapInsetElement) {
-    businessMapInsetElement.textContent = 'No se ha podido cargar la lupa del mapa.';
-  }
-}
-
 function renderCompanyMap(companyName, presenceType, locations) {
   coveragePill.textContent = `${companyName} · Cobertura ${presenceType}`;
-  const map = ensureBusinessMap();
-  ensureBusinessInsetMap();
   const resolvedLocations = locations.map((location) => {
     const resolved = resolveCoordinates(location);
     return { ...location, coordinates: resolved.latLng, approximated: resolved.approximated, fallback: resolved.fallback };
   });
   dashboardState.map = { companyName, presenceType, locations: resolvedLocations };
-
-  if (map && businessMarkersLayer) {
-    businessMarkersLayer.clearLayers();
-    const bounds = [];
-    resolvedLocations.forEach((location, index) => {
-      const marker = L.marker(location.coordinates, { title: `${location.name} · ${location.city}` })
-        .bindPopup(markerPopup(location));
-      marker.on('click', () => {
-        focusBusinessInset(location);
-        setSelectedLocationItem(index);
-      });
-      marker.addTo(businessMarkersLayer);
-      bounds.push(location.coordinates);
-    });
-    if (bounds.length > 1) map.fitBounds(bounds, { padding: [46, 46], maxZoom: 7 });
-    if (bounds.length === 1) map.setView(bounds[0], 6);
-    window.setTimeout(() => map.invalidateSize(), 120);
-  }
-  focusBusinessInset(resolvedLocations.find((location) => location.isMain) || resolvedLocations[0]);
+  lastResolvedMapLocations = resolvedLocations;
+  refreshBusinessMarkers(resolvedLocations);
 
   const fallbackLocations = resolvedLocations.filter((location) => location.fallback);
   mapWarning.hidden = fallbackLocations.length === 0;
@@ -509,19 +541,23 @@ function renderCompanyMap(companyName, presenceType, locations) {
     const address = document.createElement('p');
     item.tabIndex = 0;
     item.setAttribute('role', 'button');
-    item.setAttribute('aria-label', `Centrar lupa en ${location.name}`);
+    item.setAttribute('aria-label', `Centrar mapa en ${location.name}`);
     if (location.isMain) item.classList.add('is-selected');
     name.textContent = location.name;
     type.textContent = location.isMain ? 'Sede principal' : location.type;
     address.textContent = [location.address, location.city, location.province, location.postal, location.country].filter(Boolean).join(', ');
     item.addEventListener('click', () => {
-      focusBusinessInset(location);
+      ensureBusinessMap();
+      if (businessMap) businessMap.setView(location.coordinates, 13);
+      safeInvalidateBusinessMap();
       setSelectedLocationItem(index);
     });
     item.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
-        focusBusinessInset(location);
+        ensureBusinessMap();
+        if (businessMap) businessMap.setView(location.coordinates, 13);
+        safeInvalidateBusinessMap();
         setSelectedLocationItem(index);
       }
     });
@@ -549,7 +585,24 @@ companyMapForm?.addEventListener('submit', (event) => {
   showToast('Mapa empresarial actualizado.');
 });
 
-initializeEmptyBusinessMap();
+recalculateMapButton?.addEventListener('click', () => {
+  ensureBusinessMap();
+  refreshBusinessMarkers(lastResolvedMapLocations);
+  applyBusinessMapView(lastResolvedMapLocations);
+});
+
+window.addEventListener('resize', () => {
+  if (!businessMap) return;
+  applyBusinessMapView(lastResolvedMapLocations);
+});
+
+window.addEventListener('hashchange', () => {
+  if (window.location.hash === '#mapa-empresa') {
+    initializeBusinessMapWhenVisible();
+  }
+});
+
+initializeBusinessMapWhenVisible();
 
 
 function escapeHtml(value) {
