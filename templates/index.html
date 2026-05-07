@@ -306,7 +306,20 @@
         <article class="card result-card company-map-card">
           <div class="coverage-pill" id="coverage-pill">Cobertura pendiente</div>
           <div class="map-warning" id="map-warning" hidden></div>
-          <div class="real-map" id="business-map" aria-label="Mapa interactivo de sedes y delegaciones"></div>
+          <div class="map-showcase" aria-label="Vista general e inset ampliado de sedes y delegaciones">
+            <div class="map-shell">
+              <div class="map-label">Vista general</div>
+              <div class="real-map main-business-map" id="business-map" aria-label="Mapa general interactivo de sedes y delegaciones"></div>
+            </div>
+            <div class="map-inset-card" aria-label="Lupa de ubicación seleccionada">
+              <div class="map-inset-header">
+                <span>Lupa de ubicación</span>
+                <strong id="map-inset-title">Sede principal</strong>
+              </div>
+              <div class="real-map inset-business-map" id="business-map-inset" aria-label="Mapa ampliado de la ubicación seleccionada"></div>
+            </div>
+          </div>
+          <div class="map-helper-text">Haz clic en cualquier marcador o ubicación del listado para centrar la lupa sin perder la vista general de cobertura.</div>
           <div class="locations-list" id="locations-list"></div>
           <div class="future-note">Fase futura: reputación por sede, reseñas negativas, incidencias detectadas, recomendaciones y estado reputacional por ubicación.</div>
         </article>
